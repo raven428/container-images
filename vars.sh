@@ -29,7 +29,7 @@ esac
 if [[ "${MANUAL_IMAGES_DIRS}" != "" ]]; then
   diff=''
   for dir in ${MANUAL_IMAGES_DIRS}; do
-    diff="${diff}${dir}\n"
+    diff="${diff}sources/${dir}\n"
   done
 else
   diff=$(
