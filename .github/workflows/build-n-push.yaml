@@ -1,0 +1,28 @@
+---
+name: build and push
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  schedule:
+    - cron: "11 11 * * 1"
+jobs:
+  build-n-push:
+    name: build and push
+    timeout-minutes: 22
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: build and test images
+        run: ./build.sh
+      - name: login to ghcr
+        if: "github.ref == 'refs/heads/master'"
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.REGISTRY_WRITER }}
+      - name: push images
+        if: "github.ref == 'refs/heads/master'"
+        run: ./push.sh
