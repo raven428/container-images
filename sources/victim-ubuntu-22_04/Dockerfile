@@ -4,7 +4,7 @@ RUN apt-get update && \
   apt-get install -y apt-utils systemd python3 sudo bash \
   ca-certificates iproute2 python3-apt aptitude python3-psutil \
   secure-delete openssh-server && \
-  systemctl enable systemd-networkd ssh &&\
+  systemctl enable systemd-resolved systemd-networkd ssh && \
   apt-get clean && \
   rm -Rf /usr/share/doc /usr/share/man /var/lib/apt/lists/*
 
