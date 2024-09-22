@@ -8,7 +8,7 @@ set -ueo pipefail
 DIR2CHECK="$(readlink -f "${DIR2CHECK}")"
 export PROM_RULES_DIR
 /usr/bin/env docker run --rm \
-  -it -w "${PATH2CONT}" \
+  -i -w "${PATH2CONT}" \
   --name="${CONT_NAME}" \
   --hostname="${CONT_NAME}" \
   -e "PROM_RULES_DIR" \

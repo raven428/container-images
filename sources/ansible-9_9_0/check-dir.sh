@@ -6,7 +6,7 @@ set -ueo pipefail
 : "${IMAGE_NAME:="ghcr.io/raven428/container-images/ansible-9_9_0:latest"}"
 DIR2CHECK="$(readlink -f "${DIR2CHECK}")"
 /usr/bin/env docker run --rm \
-  -it -w "${PATH2CONT}" \
+  -i -w "${PATH2CONT}" \
   --name="${CONT_NAME}" \
   --hostname="${CONT_NAME}" \
   -v "${DIR2CHECK}:/data:ro" \
