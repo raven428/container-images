@@ -35,13 +35,13 @@ else
   diff=$(
     /usr/bin/env git diff --name-only \
       "${diff_source}" "${diff_target}" |
-      /usr/bin/env egrep -v '^(README.md)$' || true
+      /usr/bin/env egrep -v '^(README\.md)|(\.gitignore)$' || true
   )
 fi
 if [[ "${diff}" == "" ]]; then
   diff=$(find sources/* -type f)
 fi
-/usr/bin/env printf "\n———⟨ diff: ⟩———\n${diff}\n———⟨ images: ⟩———\n"
+/usr/bin/env printf "\n———⟨ diff: ⟩———\n${diff}\n\n———⟨ images: ⟩———\n"
 if /usr/bin/env printf "${diff}" | /usr/bin/env fgrep -v 'sources/' >/dev/null; then
   # rebuild all in case of framework changes
   echo 'all images to rebuild:'
