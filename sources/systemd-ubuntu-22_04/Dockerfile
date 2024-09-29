@@ -3,7 +3,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
   apt-get install -y apt-utils systemd python3 sudo bash \
   ca-certificates iproute2 python3-apt aptitude python3-psutil \
-  secure-delete && \
+  secure-delete openssh-server && \
+  systemctl enable ssh && \
   apt-get clean && \
   rm -Rf /usr/share/doc /usr/share/man /var/lib/apt/lists/*
 
