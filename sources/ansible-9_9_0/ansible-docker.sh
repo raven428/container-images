@@ -79,7 +79,7 @@ if [[ "$(
 fi
 # shellcheck disable=2068
 /usr/bin/env docker exec -u "${UID}" \
-  -it -w "${ANSIBLE_PATH2CONT}" \
+  -i -w "${ANSIBLE_PATH2CONT}" \
   -e "ANSIBLE_FORCE_COLOR=True" \
   -e "SSH_AUTH_SOCK" \
   ${env2cont[@]} \
