@@ -64,7 +64,7 @@ if [[ "$(
 )" != "running" ]]; then
   /usr/bin/env docker image pull "${ANSIBLE_IMAGE_NAME}"
   /usr/bin/env docker image tag "${ANSIBLE_IMAGE_NAME}" "${ANSIBLE_IMAGE_SHORT}"
-  /usr/bin/env docker run  \
+  /usr/bin/env docker run \
     -d --rm --network=host \
     --name="${ANSIBLE_CONT_NAME}" \
     --hostname="${ANSIBLE_CONT_NAME}" \
