@@ -3,6 +3,8 @@ set -ueo pipefail
 : "${ANSIBLE_PATH:="."}"
 : "${ANSIBLE_PATH2CONT:="/ansible"}"
 : "${ANSIBLE_CONT_NAME:="ansible-${USER}"}"
+: "${ANSIBLE_CONT_ADDONS:=""}"
+: "${ANSIBLE_CONT_COMMAND:="sleep 5555"}"
 : "${ANSIBLE_USERDIR:="${HOME}/.ansible"}"
 : "${ANSIBLE_IMAGE_NAME:="ghcr.io/raven428/container-images/ansible-9_9_0:latest"}"
 : "${ANSIBLE_IMAGE_SHORT:="ansible:latest"}"
@@ -64,7 +66,8 @@ if [[ "$(
 )" != "running" ]]; then
   /usr/bin/env docker image pull "${ANSIBLE_IMAGE_NAME}"
   /usr/bin/env docker image tag "${ANSIBLE_IMAGE_NAME}" "${ANSIBLE_IMAGE_SHORT}"
-  /usr/bin/env docker run  \
+  # shellcheck disable=2086
+  /usr/bin/env docker run \
     -d --rm --network=host \
     --name="${ANSIBLE_CONT_NAME}" \
     --hostname="${ANSIBLE_CONT_NAME}" \
@@ -74,14 +77,15 @@ if [[ "$(
     -v "${SSH_AUTH_SOCK}:${SSH_AUTH_SOCK}" \
     -v "${ANSIBLE_USERDIR}:${ANSIBLE_USERDIR}" \
     -v "${ANSIBLE_PATH}:${ANSIBLE_PATH2CONT}:ro" \
-    "${ANSIBLE_IMAGE_SHORT}" \
-    sleep 5555
+    ${ANSIBLE_CONT_ADDONS} \
+    ${ANSIBLE_IMAGE_SHORT} \
+    ${ANSIBLE_CONT_COMMAND}
 fi
 # shellcheck disable=2068
-/usr/bin/env docker exec -u "${UID}" \
+/usr/bin/env docker exec \
   -i -w "${ANSIBLE_PATH2CONT}" \
   -e "ANSIBLE_FORCE_COLOR=True" \
   -e "SSH_AUTH_SOCK" \
   ${env2cont[@]} \
   "${ANSIBLE_CONT_NAME}" \
-  "${@}"
+  su "${USER}" -c "${*}"
