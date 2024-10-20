@@ -6,7 +6,7 @@ apt-get install -y bash sudo ssh-client apt-utils python3-pip ca-certificates rs
 apt-get upgrade -y
 pip install --upgrade pip
 pip install -U -r files/requirements.txt
-mv -vf /files/sudoers /etc/sudoers
+mv -vf /files/shared/sudoers /etc/sudoers
 chmod 400 /etc/sudoers
 mkdir -vp  /root/.config/yapf
 mv -vf /files/style /root/.config/yapf/style

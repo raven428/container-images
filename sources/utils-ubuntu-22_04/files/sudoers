@@ -1,5 +1,0 @@
-# sudoers light
-Defaults !env_reset
-root ALL=(ALL:ALL) NOPASSWD: ALL
-%root ALL=(ALL:ALL) NOPASSWD: ALL
-%sudo ALL=(ALL:ALL) NOPASSWD: ALL
