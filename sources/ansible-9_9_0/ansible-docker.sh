@@ -81,9 +81,16 @@ if [[ "$(
     ${ANSIBLE_IMAGE_SHORT} \
     ${ANSIBLE_CONT_COMMAND}
 fi
+if [[ -t 0 && -t 1 && -t 2 ]]; then
+  isterminal='t'
+  echo terminal yes
+else
+  isterminal=''
+  echo terminal no
+fi
 # shellcheck disable=2068
 /usr/bin/env docker exec \
-  -i -w "${ANSIBLE_PATH2CONT}" \
+  -i"${isterminal}" -w "${ANSIBLE_PATH2CONT}" \
   -e "ANSIBLE_FORCE_COLOR=True" \
   -e "SSH_AUTH_SOCK" \
   ${env2cont[@]} \

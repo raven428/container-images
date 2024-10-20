@@ -8,12 +8,6 @@ pip install --upgrade pip
 pip install -U -r files/requirements.txt
 mv -vf /files/shared/sudoers /etc/sudoers
 chmod 400 /etc/sudoers
-mkdir -vp  /root/.config/yapf
-mv -vf /files/style /root/.config/yapf/style
-mv -vf /files/yamllint.yaml /root/.config/yamllint.yaml
-mv -vf /files/check-syntax.sh /
-chmod 755 /check-syntax.sh
-mv -vf /files/shared/prepare2check.sh /
 
 # cleanup
 apt-get clean

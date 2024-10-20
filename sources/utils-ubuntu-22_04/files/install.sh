@@ -56,7 +56,7 @@ mv -v /files/shared/profile-dmisu /root
 echo 'PATH="${PATH}:/opt/mssql-tools18/bin"' >> ~/.bashrc_local
 find /root -type d -print0 | xargs chmod 755
 find /root -type f -print0 | xargs chmod 644
-mv -vf /files/sudoers /etc/sudoers
+mv -vf /files/shared/sudoers /etc/sudoers
 chmod 400 /etc/sudoers
 echo 'en_US.UTF-8 UTF-8' >/etc/locale.gen
 locale-gen
