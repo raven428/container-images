@@ -11,7 +11,7 @@ apt-get install -y \
   iftop nmon reptyr psmisc jq git bc lsof progress pv tree iproute2 net-tools \
   hostname dmidecode groff-base hdparm lshw iputils-ping iputils-arping locales \
   secure-delete moreutils less acl lz4 lzop lzma zstd unzip redis-tools \
-  mysqltuner mariadb-client postgresql-client nftables iptables
+  mysqltuner mariadb-client postgresql-client nftables iptables node-ws
 apt-get upgrade -y
 
 # https://learn.microsoft.com/en-us/sql/linux/sql-server-linux-setup-tools
@@ -30,7 +30,7 @@ echo "deb [ arch=amd64,arm64 ] \
   https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/6.0 multiverse" |
   tee /etc/apt/sources.list.d/mongodb-org-6.0.list
 apt-get update
-apt-get install -y mongodb-org-shell
+apt-get install -y mongocli mongodb-mongosh mongodb-org-shell
 apt-get clean
 
 # direct download
@@ -47,6 +47,8 @@ curl -sL \
 cd /usr/local/bin
 chmod -v 755 kubectl yq postgresqltuner.pl
 curl -sL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+curl -sL https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl_1.9.1_linux_amd64.deb \
+  -o /files/grpcurl.deb && dpkg -i /files/grpcurl.deb
 
 # image configuration
 update-ca-certificates
