@@ -66,4 +66,3 @@ for IMAGE_DIR in ${source_dirs}; do
   IMAGES_DIRS+=("${IMAGE_DIR}")
   echo "image [${IMAGE_DIR}] to rebuild"
 done
-/usr/bin/env printf "\n———⟨ building: ⟩———\n"
