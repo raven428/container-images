@@ -8,17 +8,37 @@ on:
   schedule:
     - cron: "11 11 * * 1"
 jobs:
+  define-matrix:
+    name: define matrix
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.define-matrix.outputs.images }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+      - name: define matrix
+        id: define-matrix
+        run: |
+          source ./matrix.sh
+          echo "images=${DIR_SON}" >> "${GITHUB_OUTPUT}"
   build-n-push:
-    name: build and push
+    name: "${{ matrix.image }} build"
+    needs: define-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.define-matrix.outputs.images) }}
     timeout-minutes: 22
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: true
       - name: build and test images
-        run: ./build.sh
+        run: MANUAL_IMAGES_DIRS='${{ matrix.image }}/' ./build.sh
       - name: login to ghcr
         if: "github.ref == 'refs/heads/master'"
         uses: docker/login-action@v3
@@ -28,4 +48,4 @@ jobs:
           password: ${{ secrets.REGISTRY_WRITER }}
       - name: push images
         if: "github.ref == 'refs/heads/master'"
-        run: ./push.sh
+        run: MANUAL_IMAGES_DIRS='${{ matrix.image }}/' ./push.sh

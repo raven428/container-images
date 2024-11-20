@@ -5,6 +5,7 @@ MY_BIN="$(readlink -f "$0")"
 MY_PATH="$(dirname "${MY_BIN}")"
 # shellcheck source=/dev/null
 source "${MY_PATH}/vars.sh"
+/usr/bin/env printf "\n———⟨ building: ⟩———\n"
 TOTAL_RESULT=0
 # shellcheck disable=2153
 for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
