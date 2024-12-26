@@ -30,7 +30,7 @@ echo "deb [ arch=amd64,arm64 ] \
   https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/6.0 multiverse" |
   tee /etc/apt/sources.list.d/mongodb-org-6.0.list
 apt-get update
-apt-get install -y mongocli mongodb-mongosh mongodb-org-shell
+apt-get install -y mongocli mongodb-mongosh mongodb-database-tools
 apt-get clean
 
 # direct download
