@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -ueo pipefail
+: "${CONTENGI:="docker"}"
 : "${ANSIBLE_PATH:="."}"
 : "${ANSIBLE_PATH2CONT:="/ansible"}"
 : "${ANSIBLE_CONT_NAME:="ansible-${USER}"}"
@@ -49,7 +50,7 @@ pushd "${ANSIBLE_PATH}" >/dev/null
 '
 popd >/dev/null
 if [[ "$(
-  /usr/bin/env docker inspect "${ANSIBLE_CONT_NAME}" -f "
+  /usr/bin/env ${CONTENGI} inspect "${ANSIBLE_CONT_NAME}" -f "
     {{- range .Mounts -}}
       {{- if eq .Destination \"${ANSIBLE_PATH2CONT}\" -}}
         {{- .Source -}}{{- break -}}
@@ -58,16 +59,16 @@ if [[ "$(
   " 2>/dev/null || true
 )" != "${ANSIBLE_PATH}" ]]; then
   echo "path changed to [${ANSIBLE_PATH}], destroying container…"
-  /usr/bin/env docker rm -f "${ANSIBLE_CONT_NAME}" 2>/dev/null || true
+  /usr/bin/env ${CONTENGI} rm -f "${ANSIBLE_CONT_NAME}" 2>/dev/null || true
 fi
 if [[ "$(
-  /usr/bin/env docker container inspect -f '{{.State.Status}}' \
+  /usr/bin/env ${CONTENGI} container inspect -f '{{.State.Status}}' \
   "${ANSIBLE_CONT_NAME}" 2>/dev/null || true
 )" != "running" ]]; then
-  /usr/bin/env docker image pull "${ANSIBLE_IMAGE_NAME}"
-  /usr/bin/env docker image tag "${ANSIBLE_IMAGE_NAME}" "${ANSIBLE_IMAGE_SHORT}"
+  /usr/bin/env ${CONTENGI} image pull "${ANSIBLE_IMAGE_NAME}"
+  /usr/bin/env ${CONTENGI} image tag "${ANSIBLE_IMAGE_NAME}" "${ANSIBLE_IMAGE_SHORT}"
   # shellcheck disable=2086
-  /usr/bin/env docker run \
+  /usr/bin/env ${CONTENGI} run \
     -d --rm --network=host \
     --name="${ANSIBLE_CONT_NAME}" \
     --hostname="${ANSIBLE_CONT_NAME}" \
@@ -89,7 +90,7 @@ else
   echo terminal no
 fi
 # shellcheck disable=2068
-/usr/bin/env docker exec \
+/usr/bin/env ${CONTENGI} exec \
   -i"${isterminal}" -w "${ANSIBLE_PATH2CONT}" \
   -e "ANSIBLE_FORCE_COLOR=True" \
   -e "SSH_AUTH_SOCK" \

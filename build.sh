@@ -14,7 +14,7 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
   echo "building [${TAG}] from [${IMAGE_DIR}] dir…"
   # shellcheck source=/dev/null
   source "${IMAGE_DIR}/vars.sh"
-  /usr/bin/env docker build \
+  /usr/bin/env podman build \
     --network host \
     -t "${TARGET_REGISTRY}/${TAG}:latest" \
     -t "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}" \
@@ -23,7 +23,7 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
     # shellcheck source=/dev/null
     source "${IMAGE_DIR}/${IMAGE_TEST}"
     if [[ ${TEST_RESULT:-1} -gt 0 ]]; then
-      /usr/bin/env docker image rm -f \
+      /usr/bin/env podman image rm -f \
         "${TARGET_REGISTRY}/${TAG}:latest" \
         "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}"
       TOTAL_RESULT=$((TOTAL_RESULT + ${TEST_RESULT:-1}))

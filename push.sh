@@ -13,10 +13,10 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
   echo "pushing [${TAG}] from [${IMAGE_DIR}] dir…"
   # shellcheck source=/dev/null
   source "${IMAGE_DIR}/vars.sh"
-  /usr/bin/env docker push "${TARGET_REGISTRY}/${TAG}:latest"
+  /usr/bin/env podman push "${TARGET_REGISTRY}/${TAG}:latest"
   # shellcheck disable=2154
-  /usr/bin/env docker push "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}"
-  /usr/bin/env docker image rm -f \
+  /usr/bin/env podman push "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}"
+  /usr/bin/env podman image rm -f \
     "${TARGET_REGISTRY}/${TAG}:latest" \
     "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}"
 done

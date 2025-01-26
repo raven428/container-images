@@ -11,13 +11,13 @@ set -euo pipefail
   /usr/bin/env sudo nft flush ruleset
 )
 /usr/bin/env sudo machinectl -s SIGKILL kill "${NSP_NAME}" || true
-/usr/bin/env docker rm -f "${NSP_NAME}"
-/usr/bin/env docker create --name "${NSP_NAME}" "${NSPAWN}"
+/usr/bin/env podman rm -f "${NSP_NAME}"
+/usr/bin/env podman create --name "${NSP_NAME}" "${NSPAWN}"
 /usr/bin/env sudo rm -rf "${DEST_DIR}"
 /usr/bin/env mkdir -vp "${DEST_DIR}"
-/usr/bin/env docker export "${NSP_NAME}" |
+/usr/bin/env podman export "${NSP_NAME}" |
   /usr/bin/env sudo tar -x -C "${DEST_DIR}"
-/usr/bin/env docker rm -f "${NSP_NAME}"
+/usr/bin/env podman rm -f "${NSP_NAME}"
 /usr/bin/env mkdir -vp /etc/systemd/network
 /usr/bin/env sudo mkdir -vp "${DEST_DIR}/root/.ssh"
 if [[ -e ~/.ssh/authorized_keys ]]; then

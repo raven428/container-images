@@ -6,15 +6,11 @@ test_cont_name=$(
     # workaround for "mktemp: Invalid argument" with busybox from alpine
     /usr/bin/env awk -F '.' '{ print "test-systemd-ubuntu-" $2 }'
 )
-/usr/bin/env docker run \
-  --network=host \
-  -d --privileged \
-  --cgroupns=host \
-  --name "${test_cont_name}" \
-  -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+/usr/bin/env podman run \
+  -d --name "${test_cont_name}" \
   "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}"
 count=7
-while ! /usr/bin/env docker exec "${test_cont_name}" systemctl status; do
+while ! /usr/bin/env podman exec "${test_cont_name}" systemctl status; do
   echo "waiting container ready, left [$count] tries"
   count=$((count - 1))
   if [[ $count -le 0 ]]; then
@@ -30,5 +26,5 @@ else
   # shellcheck disable=2034
   TEST_RESULT=1
 fi
-/usr/bin/env docker rm -f "${test_cont_name}" |
+/usr/bin/env podman rm -f "${test_cont_name}" |
   /usr/bin/awk '{print "container [" $0 "] destroyed"}'

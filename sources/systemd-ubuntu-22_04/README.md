@@ -4,11 +4,10 @@
 
 ```bash
 cont_name='test-container'
-/usr/bin/env docker run --network=host --name "${cont_name}" \
--d --privileged -v /sys/fs/cgroup:/sys/fs/cgroup:rw --cgroupns=host \
+/usr/bin/env podman run --name "${cont_name}" -d \
 host.tld/registry/path/ubuntu-systemd-22_04:latest
 count=7
-while ! /usr/bin/env docker exec "${cont_name}" systemctl status; do
+while ! /usr/bin/env podman exec "${cont_name}" systemctl status; do
   echo "waiting container ready, left [$count] tries"
   count=$((count - 1))
   if [[ $count -le 0 ]]; then
@@ -31,15 +30,10 @@ fi
 dependency:
   name: galaxy
 driver:
-  name: docker
+  name: podman
 platforms:
   - name: "tests-container"
     image: "host.tld/registry/path/ubuntu-systemd-20_04:latest"
-    network_mode: host
-    cgroupns_mode: host
-    privileged: true
-    mounts:
-      - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
 provisioner:
   name: ansible
   env:

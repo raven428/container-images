@@ -7,7 +7,7 @@ set -ueo pipefail
 : "${IMAGE_NAME:="ghcr.io/raven428/container-images/linters-ubuntu-22_04:latest"}"
 DIR2CHECK="$(readlink -f "${DIR2CHECK}")"
 export PROM_RULES_DIR
-/usr/bin/env docker run --rm \
+/usr/bin/env podman run --rm \
   -i -w "${PATH2CONT}" \
   --name="${CONT_NAME}" \
   --hostname="${CONT_NAME}" \

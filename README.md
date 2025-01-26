@@ -3,5 +3,5 @@
 ## Before manual `./push.sh`
 
 ```shell
-docker login --username json_key --password-stdin ghcr.io
+podman login --username json_key --password-stdin ghcr.io
 ```
