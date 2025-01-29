@@ -11,7 +11,7 @@ set -euo pipefail
   /usr/bin/env sudo nft flush ruleset
 )
 /usr/bin/env sudo machinectl -s SIGKILL kill "${NSP_NAME}" || true
-/usr/bin/env podman rm -f "${NSP_NAME}"
+/usr/bin/env podman rm -f "${NSP_NAME}" || true
 /usr/bin/env podman create --name "${NSP_NAME}" "${NSPAWN}"
 /usr/bin/env sudo rm -rf "${DEST_DIR}"
 /usr/bin/env mkdir -vp "${DEST_DIR}"
