@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -ueo pipefail
+: "${CONTENGI:="docker"}"
 : "${ANSIBLE_PATH:="."}"
 : "${ANSIBLE_PATH2CONT:="/ansible"}"
 : "${ANSIBLE_CONT_NAME:="ansible-${USER}"}"
@@ -7,7 +8,7 @@ set -ueo pipefail
 : "${ANSIBLE_CONT_COMMAND:="sleep 5555"}"
 : "${ANSIBLE_USERDIR:="${HOME}/.ansible"}"
 : "${ANSIBLE_IMAGE_NAME:="ghcr.io/raven428/container-images/ansible-9_9_0:latest"}"
-: "${ANSIBLE_IMAGE_SHORT:="ansible:latest"}"
+: "${ANSIBLE_IMAGE_SHORT:="ansbl:l"}"
 /usr/bin/env mkdir -vp "${ANSIBLE_USERDIR}"/{ssh,tmp}
 /usr/bin/env cat <<EOF | /usr/bin/env sponge "${ANSIBLE_USERDIR}/ssh/config"
 # ssh config for Ansible
@@ -49,31 +50,29 @@ pushd "${ANSIBLE_PATH}" >/dev/null
 '
 popd >/dev/null
 if [[ "$(
-  /usr/bin/env docker inspect "${ANSIBLE_CONT_NAME}" -f "
-    {{- range .Mounts -}}
-      {{- if eq .Destination \"${ANSIBLE_PATH2CONT}\" -}}
-        {{- .Source -}}{{- break -}}
-      {{- end -}}
-    {{- end -}}
-  " 2>/dev/null || true
+  /usr/bin/env ${CONTENGI} inspect "${ANSIBLE_CONT_NAME}" |
+  /usr/bin/env jq -r --arg dest "${ANSIBLE_PATH2CONT}" \
+  "[.[0].Mounts[] | select(.Destination == \$dest) | .Source][0]" \
+   2>/dev/null || true
 )" != "${ANSIBLE_PATH}" ]]; then
   echo "path changed to [${ANSIBLE_PATH}], destroying container…"
-  /usr/bin/env docker rm -f "${ANSIBLE_CONT_NAME}" 2>/dev/null || true
+  /usr/bin/env ${CONTENGI} rm -f "${ANSIBLE_CONT_NAME}" 2>/dev/null || true
 fi
 if [[ "$(
-  /usr/bin/env docker container inspect -f '{{.State.Status}}' \
+  /usr/bin/env ${CONTENGI} container inspect -f '{{.State.Status}}' \
   "${ANSIBLE_CONT_NAME}" 2>/dev/null || true
 )" != "running" ]]; then
-  /usr/bin/env docker image pull "${ANSIBLE_IMAGE_NAME}"
-  /usr/bin/env docker image tag "${ANSIBLE_IMAGE_NAME}" "${ANSIBLE_IMAGE_SHORT}"
+  /usr/bin/env ${CONTENGI} image pull "${ANSIBLE_IMAGE_NAME}"
+  /usr/bin/env ${CONTENGI} image tag "${ANSIBLE_IMAGE_NAME}" "${ANSIBLE_IMAGE_SHORT}"
   # shellcheck disable=2086
-  /usr/bin/env docker run \
+  /usr/bin/env ${CONTENGI} run \
     -d --rm --network=host \
     --name="${ANSIBLE_CONT_NAME}" \
     --hostname="${ANSIBLE_CONT_NAME}" \
     -v /etc/group:/etc/group:ro \
     -v /etc/passwd:/etc/passwd:ro \
-    -v /etc/shadow:/etc/shadow:ro \
+    -v /etc/subuid:/etc/subuid:ro \
+    -v /etc/subgid:/etc/subgid:ro \
     -v "${SSH_AUTH_SOCK}:${SSH_AUTH_SOCK}" \
     -v "${ANSIBLE_USERDIR}:${ANSIBLE_USERDIR}" \
     -v "${ANSIBLE_PATH}:${ANSIBLE_PATH2CONT}:ro" \
@@ -89,7 +88,7 @@ else
   echo terminal no
 fi
 # shellcheck disable=2068
-/usr/bin/env docker exec \
+/usr/bin/env ${CONTENGI} exec -u 0 \
   -i"${isterminal}" -w "${ANSIBLE_PATH2CONT}" \
   -e "ANSIBLE_FORCE_COLOR=True" \
   -e "SSH_AUTH_SOCK" \

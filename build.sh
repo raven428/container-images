@@ -6,6 +6,27 @@ MY_PATH="$(dirname "${MY_BIN}")"
 # shellcheck source=/dev/null
 source "${MY_PATH}/vars.sh"
 /usr/bin/env printf "\n———⟨ building: ⟩———\n"
+/usr/bin/rm -fv "${MY_PATH}/_shared/profile-dmisu/.git"
+/usr/bin/env cp -r "${MY_PATH}/.git/modules/_shared/profile-dmisu" \
+  "${MY_PATH}/_shared/profile-dmisu/.git"
+/usr/bin/env cat <<EOF >_shared/profile-dmisu/.git/config
+[core]
+  repositoryformatversion = 0
+  filemode = true
+  bare = false
+  logallrefupdates = true
+[remote "origin"]
+  url = git@github.com:raven428/profile.git
+  fetch = +refs/heads/*:refs/remotes/origin/*
+[branch "master"]
+  remote = origin
+  merge = refs/heads/master
+[log]
+  showSignature = false
+[user]
+  name = Dmitry Sukhodoev
+  email = raven428@gmail.com
+EOF
 TOTAL_RESULT=0
 # shellcheck disable=2153
 for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
@@ -14,7 +35,7 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
   echo "building [${TAG}] from [${IMAGE_DIR}] dir…"
   # shellcheck source=/dev/null
   source "${IMAGE_DIR}/vars.sh"
-  /usr/bin/env docker build \
+  /usr/bin/env podman build \
     --network host \
     -t "${TARGET_REGISTRY}/${TAG}:latest" \
     -t "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}" \
@@ -23,7 +44,7 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
     # shellcheck source=/dev/null
     source "${IMAGE_DIR}/${IMAGE_TEST}"
     if [[ ${TEST_RESULT:-1} -gt 0 ]]; then
-      /usr/bin/env docker image rm -f \
+      /usr/bin/env podman image rm -f \
         "${TARGET_REGISTRY}/${TAG}:latest" \
         "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}"
       TOTAL_RESULT=$((TOTAL_RESULT + ${TEST_RESULT:-1}))

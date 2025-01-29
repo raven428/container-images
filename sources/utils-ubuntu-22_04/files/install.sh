@@ -10,7 +10,7 @@ apt-get install -y \
   whois iotop netcat telnet bind9-utils bind9-host bind9-dnsutils gdisk p7zip \
   iftop nmon reptyr psmisc jq git bc lsof progress pv tree iproute2 net-tools \
   hostname dmidecode groff-base hdparm lshw iputils-ping iputils-arping locales \
-  secure-delete moreutils less acl lz4 lzop lzma zstd unzip redis-tools \
+  secure-delete moreutils less acl lz4 lzop lzma zstd unzip redis-tools mtr \
   mysqltuner mariadb-client postgresql-client nftables iptables node-ws
 apt-get upgrade -y
 
@@ -30,7 +30,7 @@ echo "deb [ arch=amd64,arm64 ] \
   https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/6.0 multiverse" |
   tee /etc/apt/sources.list.d/mongodb-org-6.0.list
 apt-get update
-apt-get install -y mongocli mongodb-mongosh mongodb-org-shell
+apt-get install -y mongocli mongodb-mongosh mongodb-database-tools
 apt-get clean
 
 # direct download
