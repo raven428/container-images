@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -ueo pipefail
-export IMAGE_VER='001'
-/usr/bin/env rm -rfv "sources/${TAG}/_shared"
-/usr/bin/env cp -rfv _shared "sources/${TAG}"
+# shellcheck disable=2034
+{
+  IMAGE_VER='002'
+  DEPENDS='ansible-builder/'
+}
+/usr/bin/env cp -fv _shared/install/ansible/Dockerfile "sources/${TAG}"
+/usr/bin/env cp -fv _shared/install/ansible/* "sources/${TAG}/files/"
