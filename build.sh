@@ -6,7 +6,7 @@ MY_PATH="$(dirname "${MY_BIN}")"
 # shellcheck source=/dev/null
 source "${MY_PATH}/vars.sh"
 /usr/bin/env printf "\n———⟨ building: ⟩———\n"
-/usr/bin/rm -fv "${MY_PATH}/_shared/profile-dmisu/.git"
+/usr/bin/rm -rf "${MY_PATH}/_shared/profile-dmisu/.git"
 /usr/bin/env cp -r "${MY_PATH}/.git/modules/_shared/profile-dmisu" \
   "${MY_PATH}/_shared/profile-dmisu/.git"
 /usr/bin/env cat <<EOF >_shared/profile-dmisu/.git/config
@@ -33,10 +33,18 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
   TAG=${IMAGE_DIR//sources\//}
   echo
   echo "building [${TAG}] from [${IMAGE_DIR}] dir…"
+  DEPENDS=''
   # shellcheck source=/dev/null
   source "${IMAGE_DIR}/vars.sh"
+  [[ -n "${DEPENDS}" ]] && {
+    echo "found depends [${DEPENDS}] to build"
+    MANUAL_IMAGES_DIRS="${DEPENDS}" ${MY_BIN}
+    echo "returning to [${TAG}] building…"
+  }
   /usr/bin/env podman build \
     --network host \
+    --cap-add=MAC_ADMIN,SYS_ADMIN \
+    --security-opt apparmor=unconfined \
     -t "${TARGET_REGISTRY}/${TAG}:latest" \
     -t "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}" \
     "${IMAGE_DIR}"

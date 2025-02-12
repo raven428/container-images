@@ -1,0 +1,20 @@
+--- lib/python3.11/site-packages/ansible/utils/display.py.orig       2025-02-07 05:43:40.502572887 +0000
++++ lib/python3.11/site-packages/ansible/utils/display.py    2025-02-07 09:30:38.118011641 +0000
+@@ -264,13 +264,13 @@
+             # I've left this code for historical purposes, or in case we need to add this
+             # back at a later date. For now ``TaskQueueManager.cleanup`` will perform a
+             # final flush at shutdown.
+-            # try:
+-            #     fileobj.flush()
+-            # except IOError as e:
+-            #     # Ignore EPIPE in case fileobj has been prematurely closed, eg.
+-            #     # when piping to "head -n1"
+-            #     if e.errno != errno.EPIPE:
+-            #         raise
++            try:
++                fileobj.flush()
++            except IOError as e:
++                # Ignore EPIPE in case fileobj has been prematurely closed, eg.
++                # when piping to "head -n1"
++                if e.errno != errno.EPIPE:
++                    raise

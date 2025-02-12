@@ -8,7 +8,7 @@ set -ueo pipefail
 : "${ANSIBLE_CONT_COMMAND:="sleep 5555"}"
 : "${ANSIBLE_USERDIR:="${HOME}/.ansible"}"
 : "${ANSIBLE_IMAGE_NAME:="ghcr.io/raven428/container-images/ansible-9_9_0:latest"}"
-: "${ANSIBLE_IMAGE_SHORT:="ansbl:l"}"
+: "${ANSIBLE_IMAGE_SHORT:="l.c/ansbl:l"}"
 /usr/bin/env mkdir -vp "${ANSIBLE_USERDIR}"/{ssh,tmp}
 /usr/bin/env cat <<EOF | /usr/bin/env sponge "${ANSIBLE_USERDIR}/ssh/config"
 # ssh config for Ansible
