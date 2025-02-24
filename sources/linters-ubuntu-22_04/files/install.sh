@@ -33,9 +33,6 @@ gem install mdl
   mv -vf prometheus-${prom_ver}/promtool /usr/local/bin/promtool
   chmod -v 755 /usr/local/bin/promtool
 )
-mv -vf /files/check-syntax.sh /
-chmod 755 /check-syntax.sh
-mv -vf /files/shared/prepare2check.sh /
 
 # cleanup
 apt-get clean

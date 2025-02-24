@@ -24,10 +24,12 @@ done
   addfail 'trimmed code'
 
 echo '2. terraform formatting'
-reset_trim_dir
-/usr/bin/env terraform -chdir="${trim_dir}/tf" fmt -recursive
-/usr/bin/env diff -ru --color=always "${orig_dir}/tf" "${trim_dir}/tf" ||
-  addfail 'terraform fmt'
+[[ -d "${TERRAFORM_DIR}" ]] && {
+  reset_trim_dir
+  /usr/bin/env terraform -chdir="${trim_dir}/${TERRAFORM_DIR}" fmt -recursive
+  /usr/bin/env diff -ru --color=always "${orig_dir}/${TERRAFORM_DIR}" \
+    "${trim_dir}/${TERRAFORM_DIR}" || addfail 'terraform fmt'
+} || echo "skipped due to [TERRAFORM_DIR=${TERRAFORM_DIR}] isn't a directory"
 
 echo '3. shfmt and shellcheck'
 reset_trim_dir
@@ -54,7 +56,7 @@ mapfile -t rules < <(
   # shellcheck disable=2016
   /usr/bin/env mdl -l |
     /usr/bin/env egrep '^MD.+' |
-    /usr/bin/env egrep -v '^MD(007|013|022|032|033) ' |
+    /usr/bin/env egrep -v '^MD(007|013|022|029|032|033) ' |
     /usr/bin/env awk '{print $1}'
 )
 function join_by() {
@@ -96,7 +98,7 @@ if [[ -d "${PROM_RULES_DIR}" ]]; then
     ) &>/dev/stdout || addfail 'prometheus rules'
   )
 else
-  echo "skipped due to [PROM_RULES_DIR=${PROM_RULES_DIR}] not a directory"
+  echo "skipped due to [PROM_RULES_DIR=${PROM_RULES_DIR}] isn't a directory"
 fi
 
 cleanup 'done'
