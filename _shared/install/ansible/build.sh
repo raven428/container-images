@@ -21,7 +21,3 @@ find "${PYENV_ROOT}/versions" -depth \
   -o \( -type f -a \( -name '*.pyc' -o -name '*.pyo' -o -name '*.a' \) \) \
   -o \( -type f -a -name 'wininst-*.exe' \) \
   \) -exec rm -rf '{}' +
-
-# cleanup
-apt-get clean
-rm -Rf /usr/share/doc /usr/share/man /var/lib/apt/lists/* /root/.cache/pip
