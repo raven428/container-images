@@ -65,6 +65,7 @@ echo -n "rsync to [${tmp_dir}] for checking… "
   -caHAX \
   --force \
   --delete \
+  --no-perms \
   --chmod=u=rwX,g=,o= \
   --delete-excluded \
   --exclude='/.git' \
@@ -72,7 +73,7 @@ echo -n "rsync to [${tmp_dir}] for checking… "
   --exclude='/**/.terraform' \
   --exclude='/**/.terragrunt-cache' \
   --exclude='/ansible/roles/external' \
-  . "${orig_dir}"
+  "$(readlink -f .)" "${orig_dir}"
 for f in $(
   /usr/bin/env find \
     "${orig_dir}" \
