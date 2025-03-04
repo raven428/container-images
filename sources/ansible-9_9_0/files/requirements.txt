@@ -5,7 +5,7 @@
 # molecule-podman==2.0.3
 ansible==9.9.0
 ansible-compat==24.8.0
-ansible-core==2.16.10
+ansible-core==2.16.14
 ansible-lint==24.9.0
 attrs==24.2.0
 bcrypt==4.2.1
@@ -16,7 +16,7 @@ cffi==1.17.1
 charset-normalizer==3.4.0
 click==8.1.7
 click-help-colors==0.9.4
-cryptography==43.0.3
+cryptography==44.0.1
 distro==1.9.0
 docker==7.1.0
 podman==5.2.0
@@ -24,7 +24,7 @@ enrich==1.2.7
 filelock==3.16.1
 idna==3.10
 importlib_metadata==8.5.0
-Jinja2==3.1.4
+Jinja2==3.1.6
 jsonschema==4.23.0
 jsonschema-specifications==2024.10.1
 markdown-it-py==3.0.0

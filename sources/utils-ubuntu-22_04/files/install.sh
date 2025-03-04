@@ -4,7 +4,7 @@ set -ueo pipefail
 # generic packages
 apt-get update
 export DEBIAN_FRONTEND=noninteractive
-apt-get install -y \
+apt-get install -y --no-install-recommends \
   bash apt-utils apt-file ca-certificates ethtool bash-completion dstat tcpdump \
   vim tmux screen curl wget rsync xz-utils pixz nmap atop htop traceroute sudo \
   whois iotop netcat telnet bind9-utils bind9-host bind9-dnsutils gdisk p7zip \
@@ -21,7 +21,7 @@ curl -sL https://packages.microsoft.com/config/ubuntu/22.04/prod.list |
   tee /etc/apt/sources.list.d/mssql-release.list
 apt-get update
 export ACCEPT_EULA=Y
-apt-get install -y mssql-tools18 unixodbc-dev
+apt-get install -y --no-install-recommends mssql-tools18 unixodbc-dev
 
 # https://www.mongodb.com/docs/mongocli/current/install/
 curl -sL https://www.mongodb.org/static/pgp/server-6.0.asc |
@@ -30,7 +30,7 @@ echo "deb [ arch=amd64,arm64 ] \
   https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/6.0 multiverse" |
   tee /etc/apt/sources.list.d/mongodb-org-6.0.list
 apt-get update
-apt-get install -y mongocli mongodb-mongosh mongodb-database-tools
+apt-get install -y --no-install-recommends mongocli mongodb-mongosh mongodb-database-tools
 apt-get clean
 
 # direct download
@@ -47,15 +47,15 @@ curl -sL \
 cd /usr/local/bin
 chmod -v 755 kubectl yq postgresqltuner.pl
 curl -sL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-curl -sL https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl_1.9.1_linux_amd64.deb \
-  -o /files/grpcurl.deb && dpkg -i /files/grpcurl.deb
+curl -sL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl\
+_1.9.1_linux_amd64.deb" -o /files/grpcurl.deb && dpkg -i /files/grpcurl.deb
 
 # image configuration
 update-ca-certificates
 rm -Rfv /root
 mv -v /files/shared/profile-dmisu /root
 # shellcheck disable=2016
-echo 'PATH="${PATH}:/opt/mssql-tools18/bin"' >> ~/.bashrc_local
+echo 'PATH="${PATH}:/opt/mssql-tools18/bin"' >>~/.bashrc_local
 find /root -type d -print0 | xargs chmod 755
 find /root -type f -print0 | xargs chmod 644
 mv -vf /files/shared/sudoers /etc/sudoers

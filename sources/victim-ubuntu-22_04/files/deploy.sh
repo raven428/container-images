@@ -7,7 +7,8 @@ set -euo pipefail
 /usr/bin/env which machinectl >/dev/null || (
   export DEBIAN_FRONTEND=noninteractive
   /usr/bin/env sudo apt-get update
-  /usr/bin/env sudo apt-get -y install systemd-container moreutils nftables
+  /usr/bin/env sudo apt-get -y install --no-install-recommends systemd-container \
+    moreutils nftables
   /usr/bin/env sudo nft flush ruleset
 )
 /usr/bin/env sudo machinectl -s SIGKILL kill "${NSP_NAME}" || true
@@ -32,7 +33,7 @@ fi
 /usr/bin/env ssh-keygen -f ~/.ssh/known_hosts -R '192.168.99.2' || true
 /usr/bin/env ssh-keygen -f ~/.ansible/ssh/known_hosts -R '192.168.99.2' || true
 /usr/bin/env cat <<EOF | /usr/bin/env sudo tee \
-  /etc/systemd/network/80-container-ve-${NSP_NAME}.network >/dev/null
+  /etc/systemd/network/80-container-ve-"${NSP_NAME}".network >/dev/null
 # veth for [${NSP_NAME}]
 [Match]
 Name=ve-${NSP_NAME}
@@ -81,7 +82,7 @@ search local
 EOF
 /usr/bin/env sudo systemctl reload systemd-networkd
 count=7
-while ! /usr/bin/env curl -sm 1 http://connectivitycheck.gstatic.com/generate_204; do
+while ! /usr/bin/env curl -sm 1 https://connectivitycheck.gstatic.com/generate_204; do
   echo "waiting network ready, left [$count] tries"
   count=$((count - 1))
   if [[ $count -le 0 ]]; then

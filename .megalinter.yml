@@ -1,0 +1,48 @@
+---
+# ENABLE_LINTERS:
+#   - BASH_EXEC
+#   - SPELL_CSPELL
+#   - EDITORCONFIG_EDITORCONFIG_CHECKER
+REPORT_OUTPUT_FOLDER: none
+PARALLEL_PROCESS_NUMBER: 11
+OUTPUT_FORMAT: text
+EXCLUDED_DIRECTORIES:
+  - ".git"
+  - ".vscode"
+BASH_SHFMT_ARGUMENTS: "-i 2"
+REPOSITORY_CHECKOV_ARGUMENTS: >-
+  --skip-check CKV2_GHA_1,CKV_DOCKER_2,CKV_DOCKER_3,CKV_DOCKER_7,CKV2_DOCKER_1
+PRINT_ALL_FILES: true
+EDITORCONFIG_EDITORCONFIG_CHECKER_CLI_EXECUTABLE:
+  - /ec-custom.sh
+BASH_EXEC_FILTER_REGEX_EXCLUDE: >-
+  _shared/profile-dmisu
+SPELL_CSPELL_FILTER_REGEX_EXCLUDE: >-
+  _shared/profile-dmisu|_shared/install/ansible/flush-line.diff
+EDITORCONFIG_EDITORCONFIG_CHECKER_FILTER_REGEX_EXCLUDE: >-
+  _shared/profile-dmisu|_shared/install/ansible/flush-line.diff
+EDITORCONFIG_EDITORCONFIG_CHECKER_PRE_COMMANDS:
+  - command: |
+      cat <<EOF > /ec-custom.sh
+      #!/usr/bin/env bash
+      editorconfig-checker \$@
+      rc=\$?
+      # check for multiple empty lines at EOF
+      for file in \$@; do
+        tail_lines=\$(tail -n 2 "\$file" | grep -c '^$')
+        if [ "\$tail_lines" -gt 1 ]; then
+          echo "File [\$file] has multiple trailing line"
+          rc=\$((rc + 1))
+        fi
+      done
+      exit \$rc
+      EOF
+      chmod -v 755 /ec-custom.sh
+    cwd: workspace
+    continue_if_failed: True
+REPOSITORY_TRIVY_ARGUMENTS:
+  - "--no-progress"
+  - "--ignorefile=.trivyignore.yaml"
+REPOSITORY_DEVSKIM_ARGUMENTS:
+  - "-f"
+  - "text"

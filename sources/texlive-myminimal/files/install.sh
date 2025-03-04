@@ -2,7 +2,7 @@
 set -ueo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y less fonts-freefont-otf
+apt-get install -y --no-install-recommends less fonts-freefont-otf
 tlmgr install xetex sourceserifpro sourcesanspro polyglossia fontspec \
   koma-script graphics geometry soul infwarerr etexcmds enumitem xstring roboto \
   extsizes lipsum supertabular cellspace nopageno multirow numprint numspell \
