@@ -8,10 +8,10 @@ apt-get upgrade -y
 
 # https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli
 curl -sL https://apt.releases.hashicorp.com/gpg |
-  gpg --dearmor > /usr/share/keyrings/hashicorp-archive-keyring.gpg
+  gpg --dearmor >/usr/share/keyrings/hashicorp-archive-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
   https://apt.releases.hashicorp.com jammy main" \
-  > /etc/apt/sources.list.d/hashicorp.list
+  >/etc/apt/sources.list.d/hashicorp.list
 apt-get update
 apt-get install -y terraform
 

@@ -8,7 +8,7 @@ pip install -r files/requirements.txt
 # creation to complete" after "Create molecule instance(s)" task
 {
   cd "${PYENV_ROOT}/versions/ansible"
-  patch -p0 < /files/flush-line.diff
+  patch -p0 </files/flush-line.diff
 }
 # https://github.com/vicamo/docker-pyenv/blob/main/jammy/Dockerfile
 # TASK external/nftables : Combine Rules when nft_merged_groups is set
