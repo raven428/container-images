@@ -49,3 +49,21 @@ jobs:
       - name: push images
         if: "github.ref == 'refs/heads/master'"
         run: MANUAL_IMAGES_DIRS='${{ matrix.image }}/' ./push.sh
+  linters:
+    name: linters
+    timeout-minutes: 11
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+      - name: lint the repo
+        env:
+          BRA: master
+        run: |
+          rm -f _shared/profile-dmisu/.terminfo/x/xterm-256color
+          curl -sL \
+          https://raw.githubusercontent.com/raven428/container-images/${{ env.none
+          }}refs/heads/${{ env.BRA }}/sources/linters-ubuntu-22_04/check-dir.sh |
+          bash
