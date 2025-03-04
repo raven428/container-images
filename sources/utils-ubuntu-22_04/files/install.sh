@@ -55,7 +55,7 @@ update-ca-certificates
 rm -Rfv /root
 mv -v /files/shared/profile-dmisu /root
 # shellcheck disable=2016
-echo 'PATH="${PATH}:/opt/mssql-tools18/bin"' >> ~/.bashrc_local
+echo 'PATH="${PATH}:/opt/mssql-tools18/bin"' >>~/.bashrc_local
 find /root -type d -print0 | xargs chmod 755
 find /root -type f -print0 | xargs chmod 644
 mv -vf /files/shared/sudoers /etc/sudoers

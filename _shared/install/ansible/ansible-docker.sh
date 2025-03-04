@@ -51,16 +51,16 @@ pushd "${ANSIBLE_PATH}" >/dev/null
 popd >/dev/null
 if [[ "$(
   /usr/bin/env ${CONTENGI} inspect "${ANSIBLE_CONT_NAME}" |
-  /usr/bin/env jq -r --arg dest "${ANSIBLE_PATH2CONT}" \
-  "[.[0].Mounts[] | select(.Destination == \$dest) | .Source][0]" \
-   2>/dev/null || true
+    /usr/bin/env jq -r --arg dest "${ANSIBLE_PATH2CONT}" \
+      "[.[0].Mounts[] | select(.Destination == \$dest) | .Source][0]" \
+      2>/dev/null || true
 )" != "${ANSIBLE_PATH}" ]]; then
   echo "path changed to [${ANSIBLE_PATH}], destroying container…"
   /usr/bin/env ${CONTENGI} rm -f "${ANSIBLE_CONT_NAME}" 2>/dev/null || true
 fi
 if [[ "$(
   /usr/bin/env ${CONTENGI} container inspect -f '{{.State.Status}}' \
-  "${ANSIBLE_CONT_NAME}" 2>/dev/null || true
+    "${ANSIBLE_CONT_NAME}" 2>/dev/null || true
 )" != "running" ]]; then
   /usr/bin/env ${CONTENGI} image pull "${ANSIBLE_IMAGE_NAME}"
   /usr/bin/env ${CONTENGI} image tag "${ANSIBLE_IMAGE_NAME}" "${ANSIBLE_IMAGE_SHORT}"
