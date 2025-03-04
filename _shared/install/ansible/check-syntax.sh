@@ -22,9 +22,13 @@ yamllint -c /root/.config/yamllint.yaml -f colored "${trim_dir}" ||
 
 echo '3. ansible-lint'
 reset_trim_dir
-/usr/bin/env ansible-lint \
-  --exclude ansible/roles/external \
-  --force-color -x 106 "${ANSIBLENTRY:-ansible/site.yaml}" &>/dev/stdout ||
-  addfail 'ansible-lint'
+PATH=$(readlink -f "$(echo "${PATH}" | awk -F ':' '{print $1}')"):$PATH
+export PATH
+/usr/bin/env ansible-lint --profile production \
+  --exclude ansible/roles/external --offline \
+  -f pep8 "${ANSIBLENTRY:-}" 2>/tmp/ansible-lint-stderr
+alrc=$?
+/usr/bin/env cat /tmp/ansible-lint-stderr
+[[ ${alrc} -gt 0 ]] && addfail 'ansible-lint'
 
 cleanup 'done'
