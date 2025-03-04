@@ -73,7 +73,7 @@ echo -n "rsync to [${tmp_dir}] for checking… "
   --exclude='/**/.terraform' \
   --exclude='/**/.terragrunt-cache' \
   --exclude='/ansible/roles/external' \
-  "$(readlink -f .)" "${orig_dir}"
+  "$(readlink -f .)/." "${orig_dir}"
 for f in $(
   /usr/bin/env find \
     "${orig_dir}" \
