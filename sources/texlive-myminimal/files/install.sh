@@ -6,7 +6,7 @@ apt-get install -y less fonts-freefont-otf
 tlmgr install xetex sourceserifpro sourcesanspro polyglossia fontspec \
   koma-script graphics geometry soul infwarerr etexcmds enumitem xstring roboto \
   extsizes lipsum supertabular cellspace nopageno multirow numprint numspell \
-  numnameru datetime2 pgf oberdiek ltxcmds tools hyphen-russian
+  numnameru datetime2 pgf oberdiek ltxcmds tools hyphen-russian hyperref
 tlmgr path add
 # from https://gitlab.com/islandoftex/images/texlive/-/blob/master/Dockerfile
 (
