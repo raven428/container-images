@@ -1,0 +1,10 @@
+---
+ignore:
+  - vulnerability: "GHSA-cpx3-93w7-457x"
+  - vulnerability: "GHSA-jpvw-p8pr-9g2x"
+  - vulnerability: "GHSA-jpxc-vmjf-9fcj"
+  - vulnerability: "GHSA-ww3m-ffrm-qvqv"
+  - vulnerability: "GHSA-h24r-m9qc-pvpg"
+  - vulnerability: "GHSA-7j69-qfc3-2fq9"
+  - vulnerability: "GHSA-32p4-gm2c-wmch"
+  - vulnerability: "GHSA-99w6-3xph-cx78"

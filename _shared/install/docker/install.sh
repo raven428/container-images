@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-set -ueo pipefail
+set -xueo pipefail
 
 # generic packages
 apt-get update
 export DEBIAN_FRONTEND=noninteractive
-apt-get install -y systemd iproute2 python3-apt aptitude python3-psutil secure-delete \
-  openssh-server curl
+apt-get install -y --no-install-recommends systemd iproute2 python3-apt aptitude \
+  python3-psutil secure-delete openssh-server curl ca-certificates
 
 # https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
 install -m 0755 -d /etc/apt/keyrings
@@ -13,12 +13,13 @@ curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/doc
 chmod a+r /etc/apt/keyrings/docker.asc
 # shellcheck disable=1091
 echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+  https://download.docker.com/linux/ubuntu \
   $(source /etc/os-release && echo "$VERSION_CODENAME") stable" |
-  tee /etc/apt/sources.list.d/docker.list > /dev/null
+  tee /etc/apt/sources.list.d/docker.list >/dev/null
 apt-get update
-apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin \
-  docker-compose-plugin
+apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
 
 # image configuration
 update-ca-certificates

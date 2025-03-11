@@ -8,7 +8,8 @@ set
 /usr/bin/env which git >/dev/null ||
   if /usr/bin/env fgrep debian /etc/os-release; then
     export DEBIAN_FRONTEND=noninteractive
-    /usr/bin/env apt-get update && /usr/bin/env apt-get install git
+    /usr/bin/env apt-get update && /usr/bin/env apt-get install -y \
+      --no-install-recommends git
   else
     /usr/bin/env apk update && /usr/bin/env apk add git
   fi
@@ -41,7 +42,8 @@ fi
 if [[ "${diff}" == "" ]]; then
   diff=$(find sources/* -type f)
 fi
-/usr/bin/env printf "\n———⟨ diff: ⟩———\n${diff}\n\n———⟨ images: ⟩———\n"
+/usr/bin/env printf "\n———⟨ diff: ⟩———\n\
+${diff}\n\n———⟨ images: ⟩———\n"
 if /usr/bin/env printf "${diff}" | /usr/bin/env fgrep -v 'sources/' >/dev/null; then
   # rebuild all in case of framework changes
   echo 'all images to rebuild:'

@@ -7,7 +7,7 @@ source /etc/environment
 echo "PATH=\"/ansbl:${PATH}\"" >>/etc/environment
 ln -sfv "${PYENV_ROOT}/versions/ansible/bin" '/ansbl'
 sed -i '/^auth[[:space:]]\+sufficient[[:space:]]\+pam_rootok\.so$/a\account sufficient pam_succeed_if.so uid = 0 use_uid quiet' /etc/pam.d/su
-mkdir -vp  /root/.config/yapf
+mkdir -vp /root/.config/yapf
 mv -vf /files/style /root/.config/yapf/style
 mv -vf /files/yamllint.yaml /root/.config/yamllint.yaml
 mv -vf /files/check-syntax.sh /
