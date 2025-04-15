@@ -1,0 +1,32 @@
+--- target/linux/mediatek/image/filogic.mk.orig	2024-09-23 17:34:46.000000000 +0500
++++ target/linux/mediatek/image/filogic.mk	2024-11-07 12:22:11.000000000 +0500
+@@ -47,6 +47,9 @@
+ 		) \
+ 		$(if $(findstring emmc,$1), \
+ 			-t 0x2e -N production		-p $(CONFIG_TARGET_ROOTFS_PARTSIZE)M@64M \
++		) \
++		$(if $(EXTRA_PARTSIZE), \
++			-t 0x83 -N extra		-p $(EXTRA_PARTSIZE)M@$(EXTRA_START)M \
+ 		)
+ 	cat $@.tmp >> $@
+ 	rm $@.tmp
+@@ -229,6 +232,7 @@
+   IMAGES := sysupgrade.itb
+   KERNEL_LOADADDR := 0x44000000
+   KERNEL_INITRAMFS_SUFFIX := -recovery.itb
++  EXTRA_START := $$(shell expr 64 + $$(CONFIG_TARGET_ROOTFS_PARTSIZE))
+   ARTIFACTS := \
+ 	       emmc-preloader.bin emmc-bl31-uboot.fip \
+ 	       nor-preloader.bin nor-bl31-uboot.fip \
+@@ -258,7 +262,11 @@
+ 				) \
+ 				  gzip
+ ifeq ($(DUMP),)
++ifeq ($(EXTRA_PARTSIZE),)
+   IMAGE_SIZE := $$(shell expr 64 + $$(CONFIG_TARGET_ROOTFS_PARTSIZE))m
++else
++  IMAGE_SIZE := $$(shell expr 64 + $$(CONFIG_TARGET_ROOTFS_PARTSIZE) + $$(EXTRA_PARTSIZE))m
++endif
+ endif
+   KERNEL			:= kernel-bin | gzip
+   KERNEL_INITRAMFS := kernel-bin | lzma | \

@@ -190,7 +190,22 @@
     "yada",
     "yapf",
     "zipp",
-    "zstd"
+    "zstd",
+    "owrt",
+    "filogic",
+    "mediatek",
+    "emmc",
+    "ROOTFS",
+    "PARTSIZE",
+    "LOADADDR",
+    "uboot",
+    "ifeq",
+    "openwrt",
+    "imagebuilder",
+    "buildbot",
+    "buildworker",
+    "findstring",
+    "sysupgrade"
   ],
   "enabled": true
 }
