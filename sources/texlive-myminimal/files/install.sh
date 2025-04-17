@@ -8,7 +8,7 @@ tlmgr install xetex sourceserifpro sourcesanspro polyglossia fontspec \
   koma-script graphics geometry soul infwarerr etexcmds enumitem xstring roboto \
   extsizes lipsum supertabular cellspace nopageno multirow numprint numspell \
   numnameru datetime2 pgf oberdiek ltxcmds tools hyphen-russian hyperref \
-  datetime2-russian
+  datetime2-russian pdfpages pdflscape
 tlmgr path add
 # from https://gitlab.com/islandoftex/images/texlive/-/blob/master/Dockerfile
 (

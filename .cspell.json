@@ -205,7 +205,12 @@
     "buildbot",
     "buildworker",
     "findstring",
-    "sysupgrade"
+    "sysupgrade",
+    "netavark",
+    "containernetworking",
+    "pdfpages",
+    "pdflscape",
+    "alvistack"
   ],
   "enabled": true
 }
