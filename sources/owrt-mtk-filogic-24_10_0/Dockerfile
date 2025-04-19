@@ -5,3 +5,5 @@ LABEL org.opencontainers.image.source https://github.com/raven428/container-imag
 WORKDIR /builder
 COPY --chown=buildbot:buildbot files files
 RUN files/install.sh
+# hadolint ignore=DL3002
+USER root:root
