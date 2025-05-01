@@ -4,6 +4,6 @@ LABEL org.opencontainers.image.source https://github.com/raven428/container-imag
 # workaround to remove /builder volume from openwrt/buildbot/buildworker
 WORKDIR /builder
 COPY --chown=buildbot:buildbot files files
-RUN files/install.sh
+RUN files/install.sh "filogic.diff"
 # hadolint ignore=DL3002
 USER root:root

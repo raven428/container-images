@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
 set -ueo pipefail
-patch -p0 <files/filogic.diff
+for f in $1; do
+  patch -p0 <"files/${f}"
+done
 rm -rfv files
