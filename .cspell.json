@@ -210,7 +210,18 @@
     "containernetworking",
     "pdfpages",
     "pdflscape",
-    "alvistack"
+    "alvistack",
+    "EXTRAFS",
+    "sunxi",
+    "endef",
+    "sdcard",
+    "BOOTFSSIZE",
+    "ROOTFSSIZE",
+    "ptgen",
+    "BOOTOFFSET",
+    "BOOTSIZE",
+    "cortexa",
+    "bootfs"
   ],
   "enabled": true
 }

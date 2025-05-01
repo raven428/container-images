@@ -1,0 +1,51 @@
+--- Makefile.orig	2025-04-13 16:38:32.000000000 +0000
++++ Makefile	2025-05-01 07:51:55.000000000 +0000
+@@ -342,6 +342,7 @@
+ 		$(if $(BIN_DIR),BIN_DIR="$(BIN_DIR)") \
+ 		$(if $(DISABLED_SERVICES),DISABLED_SERVICES="$(DISABLED_SERVICES)") \
+-		$(if $(ROOTFS_PARTSIZE),CONFIG_TARGET_ROOTFS_PARTSIZE="$(ROOTFS_PARTSIZE)"))
++		$(if $(ROOTFS_PARTSIZE),CONFIG_TARGET_ROOTFS_PARTSIZE="$(ROOTFS_PARTSIZE)") \
++		$(if $(EXTRA_PARTSIZE),CONFIG_TARGET_EXTRA_PARTSIZE="$(EXTRA_PARTSIZE)"))
+
+ manifest: FORCE
+ 	$(MAKE) -s _check_profile
+
+--- target/linux/sunxi/image/Makefile.orig	2025-04-13 16:38:32.000000000 +0000
++++ target/linux/sunxi/image/Makefile	2025-05-01 07:53:17.000000000 +0000
+@@ -23,7 +23,8 @@
+ 		$(IMAGE_ROOTFS) \
+ 		$(CONFIG_SUNXI_SD_BOOT_PARTSIZE) \
+ 		$(CONFIG_TARGET_ROOTFS_PARTSIZE) \
+-		$(STAGING_DIR_IMAGE)/$(DEVICE_NAME)-u-boot-with-spl.bin
++		$(STAGING_DIR_IMAGE)/$(DEVICE_NAME)-u-boot-with-spl.bin \
++		$(CONFIG_TARGET_EXTRA_PARTSIZE)
+ 	rm -f $@.boot
+ endef
+
+--- target/linux/sunxi/image/gen_sunxi_sdcard_img.sh.orig	2025-04-13 16:38:32.000000000 +0000
++++ target/linux/sunxi/image/gen_sunxi_sdcard_img.sh	2025-05-01 07:50:38.000000000 +0000
+@@ -4,7 +4,7 @@
+ # Copyright (C) 2013 OpenWrt.org
+
+ set -ex
+-[ $# -eq 6 ] || {
++[ $# -ge 6 ] || {
+     echo "SYNTAX: $0 <file> <bootfs image> <rootfs image> <bootfs size> <rootfs size> <u-boot image>"
+     exit 1
+ }
+@@ -15,11 +15,14 @@
+ BOOTFSSIZE="$4"
+ ROOTFSSIZE="$5"
+ UBOOT="$6"
++test "${7:-none}" = 'none' || {
++  EXTRA_PART=" -t 83 -p ${7}M"
++}
+
+ head=4
+ sect=63
+
+-set $(ptgen -o $OUTPUT -h $head -s $sect -l 1024 -t c -p ${BOOTFSSIZE}M -t 83 -p ${ROOTFSSIZE}M)
++set $(ptgen -o $OUTPUT -h $head -s $sect -l 1024 -t c -p ${BOOTFSSIZE}M -t 83 -p ${ROOTFSSIZE}M${EXTRA_PART:-})
+
+ BOOTOFFSET="$(($1 / 512))"
+ BOOTSIZE="$(($2 / 512))"
