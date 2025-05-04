@@ -221,7 +221,17 @@
     "BOOTOFFSET",
     "BOOTSIZE",
     "cortexa",
-    "bootfs"
+    "bootfs",
+    "rockchip",
+    "armv",
+    "conv",
+    "notrunc",
+    "ROOTFSIMAGE",
+    "ROOTFSPARTTYPE",
+    "KERNELPARTTYPE",
+    "KERNELSIZE",
+    "KERNELOFFSET",
+    "PARTOFFSET"
   ],
   "enabled": true
 }
