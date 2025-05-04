@@ -1,0 +1,55 @@
+--- Makefile.orig	2025-04-13 16:38:32.000000000 +0000
++++ Makefile	2025-05-01 07:51:55.000000000 +0000
+@@ -342,6 +342,7 @@
+ 		$(if $(BIN_DIR),BIN_DIR="$(BIN_DIR)") \
+ 		$(if $(DISABLED_SERVICES),DISABLED_SERVICES="$(DISABLED_SERVICES)") \
+-		$(if $(ROOTFS_PARTSIZE),CONFIG_TARGET_ROOTFS_PARTSIZE="$(ROOTFS_PARTSIZE)"))
++		$(if $(ROOTFS_PARTSIZE),CONFIG_TARGET_ROOTFS_PARTSIZE="$(ROOTFS_PARTSIZE)") \
++		$(if $(EXTRA_PARTSIZE),CONFIG_TARGET_EXTRA_PARTSIZE="$(EXTRA_PARTSIZE)"))
+
+ manifest: FORCE
+ 	$(MAKE) -s _check_profile
+
+--- target/linux/rockchip/image/Makefile.orig	2025-04-13 16:38:32.000000000 +0000
++++ target/linux/rockchip/image/Makefile	2025-05-03 07:55:10.000000000 +0000
+@@ -37,7 +37,8 @@
+ 		$@ \
+ 		$(CONFIG_TARGET_KERNEL_PARTSIZE) $@.boot \
+ 		$(CONFIG_TARGET_ROOTFS_PARTSIZE) $(IMAGE_ROOTFS) \
+-		32768
++		32768 \
++		$(CONFIG_TARGET_EXTRA_PARTSIZE)
+
+ 	# Copy the u-boot-rockchip.bin to the image at sector 0x40
+ 	dd if="$(STAGING_DIR_IMAGE)"/$(UBOOT_DEVICE_NAME)-u-boot-rockchip.bin of="$@" seek=64 conv=notrunc
+
+--- scripts/gen_image_generic.sh.orig	2025-04-13 16:38:32.000000000 +0000
++++ scripts/gen_image_generic.sh	2025-05-01 07:50:38.000000000 +0000
+@@ -1,7 +1,7 @@
+ #!/bin/sh
+ # Copyright (C) 2006-2012 OpenWrt.org
+ set -e -x
+-if [ $# -ne 5 ] && [ $# -ne 6 ]; then
++if [ $# -ne 5 ] && [ $# -ne 6 ] && [ $# -ne 7 ]; then
+     echo "SYNTAX: $0 <file> <kernel size> <kernel directory> <rootfs size> <rootfs image> [<align>]"
+     exit 1
+ fi
+@@ -14,6 +14,9 @@
+ ROOTFSIMAGE="$5"
+ ROOTFSPARTTYPE=${ROOTFSPARTTYPE:-83}
+ ALIGN="$6"
++test "${7:-none}" = 'none' || {
++  EXTRA_PART=" -t 83 -p ${7}M"
++}
+
+ rm -f "$OUTPUT"
+
+@@ -21,7 +24,7 @@
+ sect=63
+
+ # create partition table
+-set $(ptgen -o "$OUTPUT" -h $head -s $sect ${GUID:+-g} -t "${KERNELPARTTYPE}" -p "${KERNELSIZE}m${PARTOFFSET:+@$PARTOFFSET}" -t "${ROOTFSPARTTYPE}" -p "${ROOTFSSIZE}m" ${ALIGN:+-l $ALIGN} ${SIGNATURE:+-S 0x$SIGNATURE} ${GUID:+-G $GUID})
++set $(ptgen -o "$OUTPUT" -h $head -s $sect ${GUID:+-g} -t "${KERNELPARTTYPE}" -p "${KERNELSIZE}m${PARTOFFSET:+@$PARTOFFSET}" -t "${ROOTFSPARTTYPE}" -p "${ROOTFSSIZE}m" ${ALIGN:+-l $ALIGN} ${SIGNATURE:+-S 0x$SIGNATURE} ${GUID:+-G $GUID}${EXTRA_PART:-})
+
+ KERNELOFFSET="$(($1 / 512))"
+ KERNELSIZE="$2"
