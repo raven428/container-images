@@ -86,7 +86,8 @@ while ! /usr/bin/env curl -sm 1 https://connectivitycheck.gstatic.com/generate_2
   echo "waiting network ready, left [$count] tries"
   count=$((count - 1))
   if [[ $count -le 0 ]]; then
-    break
+    echo 'container failed'
+    exit 1
   fi
   sleep 1
 done
