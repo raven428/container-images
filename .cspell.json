@@ -231,7 +231,9 @@
     "KERNELPARTTYPE",
     "KERNELSIZE",
     "KERNELOFFSET",
-    "PARTOFFSET"
+    "PARTOFFSET",
+    "zstandard",
+    "lzlib"
   ],
   "enabled": true
 }

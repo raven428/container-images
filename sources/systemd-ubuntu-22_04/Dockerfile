@@ -4,8 +4,8 @@ LABEL org.opencontainers.image.source https://github.com/raven428/container-imag
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
   apt-get install -y --no-install-recommends apt-utils systemd python3 sudo bash \
-  ca-certificates iproute2 python3-apt aptitude python3-psutil xz-utils \
-  secure-delete openssh-server && \
+  ca-certificates iproute2 python3-apt aptitude python3-psutil xz-utils python3-zstd \
+  python3-lz4 secure-delete openssh-server && \
   systemctl enable ssh && \
   apt-get clean && \
   rm -Rf /usr/share/doc /usr/share/man /var/lib/apt/lists/*
