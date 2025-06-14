@@ -46,7 +46,7 @@ Pygments==2.18.0
 python-dateutil==2.9.0.post0
 PyYAML==6.0.2
 referencing==0.35.1
-requests==2.32.3
+requests==2.32.4
 resolvelib==1.0.1
 rich==13.9.2
 rpds-py==0.20.0
@@ -62,3 +62,6 @@ wcmatch==10.0
 yamllint==1.35.1
 yapf==0.40.2
 zipp==3.20.2
+lz4==4.4.4
+zstd==1.5.7.1
+lzlib==1.0.0
