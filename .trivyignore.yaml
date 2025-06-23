@@ -24,6 +24,16 @@ vulnerabilities:
   - id: CVE-2024-11079
     paths:
       - "sources/ansible-6_7_0/files/requirements.txt"
+  - id: CVE-2025-50181
+    paths:
+      - "sources/ansible-6_7_0/files/requirements.txt"
+      - "sources/ansible-9_9_0/files/requirements.txt"
+      - "sources/ansible-11_1_0/files/requirements.txt"
+  - id: CVE-2025-50182
+    paths:
+      - "sources/ansible-6_7_0/files/requirements.txt"
+      - "sources/ansible-9_9_0/files/requirements.txt"
+      - "sources/ansible-11_1_0/files/requirements.txt"
 misconfigurations:
   - id: AVD-DS-0001
   - id: AVD-DS-0002
