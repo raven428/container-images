@@ -4,7 +4,7 @@ set -ueo pipefail
 : "${PATH2CONT:="/data"}"
 : "${CONT_NAME:="linters-ansible-${USER}"}"
 : "${ANSIBLENTRY:=""}"
-: "${IMAGE_NAME:="ghcr.io/raven428/container-images/ansible-11_1_0:latest"}"
+: "${IMAGE_NAME:="ghcr.io/raven428/container-images/ansible-11:latest"}"
 DIR2CHECK="$(readlink -f "${DIR2CHECK}")"
 export ANSIBLENTRY
 /usr/bin/env podman run --rm \
