@@ -3,7 +3,7 @@ set -ueo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends bash apt-utils shellcheck nodejs shfmt ruby \
-  nodejs curl gnupg xz-utils rsync vim
+  nodejs curl gnupg xz-utils rsync vim less
 apt-get upgrade -y
 
 # https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli

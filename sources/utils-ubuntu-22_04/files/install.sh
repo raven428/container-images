@@ -5,7 +5,7 @@ set -ueo pipefail
 apt-get update
 export DEBIAN_FRONTEND=noninteractive
 apt-get install -y --no-install-recommends \
-  bash apt-utils apt-file ca-certificates ethtool bash-completion dstat tcpdump \
+  bash apt-utils apt-file ca-certificates ethtool bash-completion dstat tcpdump less \
   vim tmux screen curl wget rsync xz-utils pixz nmap atop htop traceroute sudo \
   whois iotop netcat telnet bind9-utils bind9-host bind9-dnsutils gdisk p7zip \
   iftop nmon reptyr psmisc jq git bc lsof progress pv tree iproute2 net-tools \

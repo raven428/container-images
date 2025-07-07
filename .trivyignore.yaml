@@ -2,38 +2,45 @@
 vulnerabilities:
   - id: CVE-2022-3697
     paths:
-      - "sources/ansible-6_7_0/files/requirements.txt"
+      - "sources/ansible-06/files/requirements.txt"
   - id: CVE-2023-5115
     paths:
-      - "sources/ansible-6_7_0/files/requirements.txt"
+      - "sources/ansible-06/files/requirements.txt"
+      - "sources/ansible-07/files/requirements.txt"
   - id: CVE-2024-8775
     paths:
-      - "sources/ansible-6_7_0/files/requirements.txt"
+      - "sources/ansible-06/files/requirements.txt"
+      - "sources/ansible-07/files/requirements.txt"
+      - "sources/ansible-08/files/requirements.txt"
   - id: CVE-2023-4237
     paths:
-      - "sources/ansible-6_7_0/files/requirements.txt"
+      - "sources/ansible-06/files/requirements.txt"
+      - "sources/ansible-07/files/requirements.txt"
   - id: CVE-2023-5764
     paths:
-      - "sources/ansible-6_7_0/files/requirements.txt"
+      - "sources/ansible-06/files/requirements.txt"
   - id: CVE-2024-0690
     paths:
-      - "sources/ansible-6_7_0/files/requirements.txt"
+      - "sources/ansible-06/files/requirements.txt"
   - id: CVE-2024-9902
     paths:
-      - "sources/ansible-6_7_0/files/requirements.txt"
+      - "sources/ansible-06/files/requirements.txt"
+      - "sources/ansible-07/files/requirements.txt"
   - id: CVE-2024-11079
     paths:
-      - "sources/ansible-6_7_0/files/requirements.txt"
+      - "sources/ansible-06/files/requirements.txt"
+      - "sources/ansible-07/files/requirements.txt"
+      - "sources/ansible-08/files/requirements.txt"
   - id: CVE-2025-50181
     paths:
-      - "sources/ansible-6_7_0/files/requirements.txt"
-      - "sources/ansible-9_9_0/files/requirements.txt"
-      - "sources/ansible-11_1_0/files/requirements.txt"
+      - "sources/ansible-06/files/requirements.txt"
+      - "sources/ansible-09/files/requirements.txt"
+      - "sources/ansible-11/files/requirements.txt"
   - id: CVE-2025-50182
     paths:
-      - "sources/ansible-6_7_0/files/requirements.txt"
-      - "sources/ansible-9_9_0/files/requirements.txt"
-      - "sources/ansible-11_1_0/files/requirements.txt"
+      - "sources/ansible-06/files/requirements.txt"
+      - "sources/ansible-09/files/requirements.txt"
+      - "sources/ansible-11/files/requirements.txt"
 misconfigurations:
   - id: AVD-DS-0001
   - id: AVD-DS-0002

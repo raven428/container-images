@@ -7,7 +7,7 @@ set -euo pipefail
 /usr/bin/env which machinectl >/dev/null || (
   export DEBIAN_FRONTEND=noninteractive
   /usr/bin/env sudo apt-get update
-  /usr/bin/env sudo apt-get -y install --no-install-recommends systemd-container \
+  /usr/bin/env sudo apt-get -y install --no-install-recommends systemd-container less \
     moreutils nftables
   /usr/bin/env sudo nft flush ruleset
 )
