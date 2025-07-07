@@ -6,7 +6,7 @@ find_package() {
   apt-cache search --names-only "$1" 2>/dev/null |
     awk '{print $1}'
 }
-apt-get install -y --no-install-recommends bash sudo ssh-client apt-utils xz-utils \
+apt-get install -y --no-install-recommends bash sudo ssh-client apt-utils xz-utils less \
   ca-certificates rsync podman systemd-resolved \
   "$(find_package '^libreadline[_\.0-9\-]+$')" \
   "$(find_package '^libsqlite[_\.0-9\-]+$')" \

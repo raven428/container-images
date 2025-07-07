@@ -3,7 +3,7 @@ FROM ubuntu:22.04
 LABEL org.opencontainers.image.source https://github.com/raven428/container-images
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
-  apt-get install -y --no-install-recommends apt-utils systemd python3 sudo bash \
+  apt-get install -y --no-install-recommends apt-utils systemd python3 sudo bash less \
   ca-certificates iproute2 python3-apt aptitude python3-psutil xz-utils python3-zstd \
   python3-lz4 secure-delete openssh-server && \
   systemctl enable ssh && \
