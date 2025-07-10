@@ -233,7 +233,8 @@
     "KERNELOFFSET",
     "PARTOFFSET",
     "zstandard",
-    "lzlib"
+    "lzlib",
+    "pytest"
   ],
   "enabled": true
 }

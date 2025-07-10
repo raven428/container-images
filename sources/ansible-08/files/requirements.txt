@@ -2,7 +2,7 @@
 # molecule docker molecule-docker yapf \
 # psutil python-dateutil bcrypt passlib \
 # netaddr yamllint ansible-lint podman \
-# molecule-podman tomli lz4 zstd lzlib
+# molecule-podman tomli lz4 zstd lzlib pytest
 ansible==8.7.0
 ansible-compat==24.10.0
 ansible-core==2.15.13
@@ -45,6 +45,7 @@ podman==5.5.0
 psutil==7.0.0
 pycparser==2.22
 Pygments==2.19.2
+pytest==8.4.1
 python-dateutil==2.9.0.post0
 PyYAML==6.0.2
 referencing==0.36.2

@@ -10,3 +10,4 @@ COPY --from=build ${PYENV_ROOT}/versions/ ${PYENV_ROOT}/versions/
 COPY _shared /files/shared
 COPY files /files
 RUN /files/configure.sh
+WORKDIR /ansible
