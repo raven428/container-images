@@ -10,6 +10,7 @@ sed -i '/^auth[[:space:]]\+sufficient[[:space:]]\+pam_rootok\.so$/a\account suff
 mkdir -vp /root/.config/yapf
 mv -vf /files/style /root/.config/yapf/style
 mv -vf /files/yamllint.yaml /root/.config/yamllint.yaml
+mv -vf /files/ansible-lint.yaml /root/.config/ansible-lint.yaml
 mv -vf /files/check-syntax.sh /
 chmod 755 /check-syntax.sh
 mv -vf /files/shared/prepare2check.sh /
