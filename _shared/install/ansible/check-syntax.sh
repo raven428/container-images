@@ -24,9 +24,10 @@ echo '3. ansible-lint'
 reset_trim_dir
 PATH=$(readlink -f "$(echo "${PATH}" | awk -F ':' '{print $1}')"):$PATH
 export PATH
+# shellcheck disable=2086
 /usr/bin/env ansible-lint -c /root/.config/ansible-lint.yaml \
   --exclude "${ANSIBLENTRY:-ansible}/roles/external" -f pep8 \
-  "${ANSIBLENTRY:-}" 2>/tmp/ansible-lint-stderr
+  ${ANSIBLENTRY:-} 2>/tmp/ansible-lint-stderr
 alrc=$?
 /usr/bin/env cat /tmp/ansible-lint-stderr
 [[ ${alrc} -gt 0 ]] && addfail 'ansible-lint'
