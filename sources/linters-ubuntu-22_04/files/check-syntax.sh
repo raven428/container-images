@@ -76,14 +76,14 @@ done
 echo '5. prettier YAML formatting'
 reset_trim_dir
 /usr/bin/env prettier \
-  --loglevel warn --no-config --parser yaml -w "${trim_dir}"'/**/*.y*ml' &>/dev/stdout
+  --loglevel warn --parser yaml -w "${trim_dir}"'/**/*.y*ml' &>/dev/stdout
 /usr/bin/env diff -ru --color=always "${orig_dir}" "${trim_dir}" ||
   addfail 'prettier-yaml'
 
 echo '6. prettier markdown formatting'
 reset_trim_dir
 /usr/bin/env prettier \
-  --loglevel warn --no-config --parser markdown -w "${trim_dir}"'/**/*.md' &>/dev/stdout
+  --loglevel warn --parser markdown -w "${trim_dir}"'/**/*.md' &>/dev/stdout
 /usr/bin/env diff -ru --color=always "${orig_dir}" "${trim_dir}" ||
   addfail 'prettier-markdown'
 
