@@ -1,0 +1,46 @@
+--- lib/python3.11/site-packages/ansible/modules/async_status.py.orig
++++ lib/python3.11/site-packages/ansible/modules/async_status.py
+@@ -36,7 +36,8 @@
+     async:
+         support: none
+     check_mode:
+-        support: none
++        support: full
++        version_added: '2.17'
+     diff_mode:
+         support: none
+     bypass_host_loop:
+@@ -116,12 +117,15 @@
+
+ def main():
+
+-    module = AnsibleModule(argument_spec=dict(
+-        jid=dict(type='str', required=True),
+-        mode=dict(type='str', default='status', choices=['cleanup', 'status']),
+-        # passed in from the async_status action plugin
+-        _async_dir=dict(type='path', required=True),
+-    ))
++    module = AnsibleModule(
++        argument_spec=dict(
++            jid=dict(type="str", required=True),
++            mode=dict(type="str", default="status", choices=["cleanup", "status"]),
++            # passed in from the async_status action plugin
++            _async_dir=dict(type="path", required=True),
++        ),
++        supports_check_mode=True,
++    )
+
+     mode = module.params['mode']
+     jid = module.params['jid']
+
+--- lib/python3.11/site-packages/ansible/plugins/action/__init__.py.orig
++++ lib/python3.11/site-packages/ansible/plugins/action/__init__.py
+@@ -120,8 +120,6 @@
+             raise AnsibleActionFail('async is not supported for this task.')
+         elif self._task.check_mode and not self._supports_check_mode:
+             raise AnsibleActionSkip('check mode is not supported for this task.')
+-        elif self._task.async_val and self._task.check_mode:
+-            raise AnsibleActionFail('check mode and async cannot be used on same task.')
+
+         # Error if invalid argument is passed
+         if self._VALID_ARGS:
