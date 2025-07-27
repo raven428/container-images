@@ -2,6 +2,7 @@
 FROM ghcr.io/raven428/container-images/ansible-builder:latest AS build
 COPY files/requirements.txt /files/requirements.txt
 COPY files/flush-line.diff /files/flush-line.diff
+COPY files/async-check.diff /files/async-check.diff
 COPY files/build.sh /files/build.sh
 RUN /files/build.sh
 
