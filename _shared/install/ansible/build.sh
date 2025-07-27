@@ -6,10 +6,6 @@ pip install --upgrade pip
 pip install -r files/requirements.txt
 # enable flush elsewhere molecule -v create doesn't progress "Wait for instance(s)
 # creation to complete" after "Create molecule instance(s)" task
-{
-  cd "${PYENV_ROOT}/versions/ansible"
-  patch -p0 </files/flush-line.diff
-}
 # https://github.com/vicamo/docker-pyenv/blob/main/jammy/Dockerfile
 # TASK external/nftables : Combine Rules when nft_merged_groups is set
 # failure with removed "ansible/plugins/test" for some reason
@@ -21,3 +17,5 @@ find "${PYENV_ROOT}/versions" -depth \
   -o \( -type f -a \( -name '*.pyc' -o -name '*.pyo' -o -name '*.a' \) \) \
   -o \( -type f -a -name 'wininst-*.exe' \) \
   \) -exec rm -rf '{}' +
+cd "${PYENV_ROOT}/versions/ansible"
+patch -p0 </files/flush-line.diff

@@ -17,10 +17,10 @@ EDITORCONFIG_EDITORCONFIG_CHECKER_CLI_EXECUTABLE:
   - /ec-custom.sh
 BASH_EXEC_FILTER_REGEX_EXCLUDE: >-
   _shared/profile-dmisu
-SPELL_CSPELL_FILTER_REGEX_EXCLUDE: >-
-  _shared/profile-dmisu|_shared/install/ansible/flush-line.diff
-EDITORCONFIG_EDITORCONFIG_CHECKER_FILTER_REGEX_EXCLUDE: >-
-  _shared/profile-dmisu|_shared/install/ansible/flush-line.diff
+SPELL_CSPELL_FILTER_REGEX_EXCLUDE: "_shared/profile-dmisu|\
+  _shared/install/ansible/(flush-line|async-check)\\.diff"
+EDITORCONFIG_EDITORCONFIG_CHECKER_FILTER_REGEX_EXCLUDE: "_shared/profile-dmisu|\
+  _shared/install/ansible/(flush-line|async-check)\\.diff"
 EDITORCONFIG_EDITORCONFIG_CHECKER_PRE_COMMANDS:
   - command: |
       cat <<EOF > /ec-custom.sh
