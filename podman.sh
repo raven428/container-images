@@ -22,4 +22,4 @@ echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/alvistack.asc] \
 https://downloadcontent.opensuse.org/repositories/home:/alvistack/${ID}_${VERSION_ID} \
 /" >/etc/apt/sources.list.d/alvistack.list
 apt-get update -y
-apt-get install -y podman podman-netavark
+apt-get install -y --no-install-recommends podman podman-netavark
