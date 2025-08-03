@@ -4,3 +4,4 @@ set -ueo pipefail
 IMAGE_VER='000'
 /usr/bin/env rm -rf "sources/${TAG}/_shared"
 /usr/bin/env cp -rf _shared "sources/${TAG}"
+/usr/bin/env cp -fv podman.sh "sources/${TAG}"

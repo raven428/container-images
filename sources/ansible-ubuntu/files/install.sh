@@ -6,8 +6,9 @@ find_package() {
   apt-cache search --names-only "$1" 2>/dev/null |
     awk '{print $1}'
 }
+/files/podman.sh
 apt-get install -y --no-install-recommends bash sudo ssh-client apt-utils xz-utils less \
-  ca-certificates rsync podman systemd-resolved \
+  ca-certificates rsync systemd-resolved \
   "$(find_package '^libreadline[_\.0-9\-]+$')" \
   "$(find_package '^libsqlite[_\.0-9\-]+$')" \
   "$(find_package '^libbz[_\.0-9\-]+$')" \
