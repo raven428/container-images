@@ -41,12 +41,15 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
     MANUAL_IMAGES_DIRS="${DEPENDS}" ${MY_BIN}
     echo "returning to [${TAG}] building…"
   }
+  current_date="$(/usr/bin/env date '+%Y%m%d')"
   /usr/bin/env podman build \
     --network host \
     --cap-add=MAC_ADMIN,SYS_ADMIN \
     --security-opt apparmor=unconfined \
     -t "${TARGET_REGISTRY}/${TAG}:latest" \
     -t "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}" \
+    -t "${TARGET_REGISTRY}/${TAG}:${current_date}" \
+    -t "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}-${current_date}" \
     "${IMAGE_DIR}"
   if [[ -n "${IMAGE_TEST:-}" ]]; then
     # shellcheck source=/dev/null
@@ -54,7 +57,9 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
     if [[ ${TEST_RESULT:-1} -gt 0 ]]; then
       /usr/bin/env podman image rm -f \
         "${TARGET_REGISTRY}/${TAG}:latest" \
-        "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}"
+        "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}" \
+        "${TARGET_REGISTRY}/${TAG}:${current_date}" \
+        "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}-${current_date}"
       TOTAL_RESULT=$((TOTAL_RESULT + ${TEST_RESULT:-1}))
     fi
   fi

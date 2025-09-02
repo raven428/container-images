@@ -65,8 +65,7 @@ if [[ "$(
   /usr/bin/env "${CONTENGI}" image pull "${ANSIBLE_IMAGE_NAME}"
   /usr/bin/env "${CONTENGI}" image tag "${ANSIBLE_IMAGE_NAME}" "${ANSIBLE_IMAGE_SHORT}"
   # shellcheck disable=2086
-  /usr/bin/env "${CONTENGI}" run \
-    -d --rm --network=host \
+  /usr/bin/env "${CONTENGI}" run -d --rm \
     --name="${ANSIBLE_CONT_NAME}" \
     --hostname="${ANSIBLE_CONT_NAME}" \
     -v /etc/group:/etc/group:ro \

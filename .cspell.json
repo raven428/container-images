@@ -234,7 +234,9 @@
     "PARTOFFSET",
     "zstandard",
     "lzlib",
-    "pytest"
+    "pytest",
+    "supertable",
+    "islandoftex"
   ],
   "enabled": true
 }
