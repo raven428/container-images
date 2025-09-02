@@ -2,7 +2,9 @@
 set -ueo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends less fonts-freefont-otf less
+apt-get install -y --no-install-recommends fonts-freefont-otf less
+# until supertable fix:
+tlmgr option repository https://texlive.info/tlnet-archive/2025/06/01/tlnet/
 tlmgr update --self
 tlmgr install xetex sourceserifpro sourcesanspro polyglossia fontspec \
   koma-script graphics geometry soul infwarerr etexcmds enumitem xstring roboto \
