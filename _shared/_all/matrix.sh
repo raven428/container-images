@@ -4,7 +4,7 @@ set -ueo pipefail
 MY_BIN="$(readlink -f "$0")"
 MY_PATH="$(dirname "${MY_BIN}")"
 # shellcheck source=/dev/null
-source "${MY_PATH}/vars.sh" || source "./vars.sh"
+source "${MY_PATH}/vars.sh" || source "_shared/_all/vars.sh"
 DIR_SON='['
 # shellcheck disable=2153
 for dir in "${IMAGES_DIRS[@]}"; do

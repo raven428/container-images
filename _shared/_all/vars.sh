@@ -36,7 +36,7 @@ else
   diff=$(
     /usr/bin/env git diff --name-only \
       "${diff_source}" "${diff_target}" |
-      /usr/bin/env egrep -v '^(README\.md)|(\.gitignore)$' || true
+      /usr/bin/env egrep '^(_shared/)|(sources/)' || true
   )
 fi
 if [[ "${diff}" == "" ]]; then
