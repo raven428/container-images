@@ -236,7 +236,8 @@
     "lzlib",
     "pytest",
     "supertable",
-    "islandoftex"
+    "islandoftex",
+    "adjustbox"
   ],
   "enabled": true
 }

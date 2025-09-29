@@ -6,10 +6,10 @@ MY_PATH="$(dirname "${MY_BIN}")"
 # shellcheck source=/dev/null
 source "${MY_PATH}/vars.sh"
 /usr/bin/env printf "\n———⟨ building: ⟩———\n"
-/usr/bin/rm -rf "${MY_PATH}/_shared/profile-dmisu/.git"
-/usr/bin/env cp -r "${MY_PATH}/.git/modules/_shared/profile-dmisu" \
-  "${MY_PATH}/_shared/profile-dmisu/.git"
-/usr/bin/env cat <<EOF >_shared/profile-dmisu/.git/config
+/usr/bin/rm -rf "${MY_PATH}/../profile-dmisu/.git"
+/usr/bin/env cp -r "${MY_PATH}/../../.git/modules/_shared/profile-dmisu" \
+  "${MY_PATH}/../profile-dmisu/.git"
+/usr/bin/env cat <<EOF >"${MY_PATH}/../profile-dmisu/.git/config"
 [core]
   repositoryformatversion = 0
   filemode = true

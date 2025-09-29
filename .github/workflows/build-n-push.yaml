@@ -22,7 +22,7 @@ jobs:
       - name: define matrix
         id: define-matrix
         run: |
-          source ./matrix.sh
+          source _shared/_all/matrix.sh
           echo "images=${DIR_SON}" >> "${GITHUB_OUTPUT}"
   build-n-push:
     name: "build ${{ matrix.image }} image"
@@ -41,7 +41,7 @@ jobs:
       - name: build and test images
         run: |
           sudo ./podman.sh
-          MANUAL_IMAGES_DIRS='${{ matrix.image }}/' ./build.sh
+          MANUAL_IMAGES_DIRS='${{ matrix.image }}/' _shared/_all/build.sh
       - name: login to ghcr
         if: "github.ref == 'refs/heads/master'"
         uses: docker/login-action@v3
@@ -51,7 +51,7 @@ jobs:
           password: ${{ secrets.REGISTRY_WRITER }}
       - name: push images
         if: "github.ref == 'refs/heads/master'"
-        run: MANUAL_IMAGES_DIRS='${{ matrix.image }}/' ./push.sh
+        run: MANUAL_IMAGES_DIRS='${{ matrix.image }}/' _shared/_all/push.sh
   MegaLinter:
     name: MegaLinter
     timeout-minutes: 11
