@@ -27,6 +27,14 @@ update-ca-certificates
 systemctl enable systemd-resolved docker
 systemctl disable systemd-networkd ssh
 
+# docker 29 update working in podman
+# TODO: investigate how to overlayfs replace DevSkim: ignore DS176209
+/usr/bin/env cat <<EOF >'/etc/docker/daemon.json'
+{
+  "storage-driver": "vfs"
+}
+EOF
+
 # Remove unnecessary getty and udev targets that result in high CPU usage when using
 # multiple containers with Molecule (https://github.com/ansible/molecule/issues/1104)
 rm -f /lib/systemd/system/systemd*udev* rm -f /lib/systemd/system/getty.target
