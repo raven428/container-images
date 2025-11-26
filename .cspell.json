@@ -237,7 +237,8 @@
     "pytest",
     "supertable",
     "islandoftex",
-    "adjustbox"
+    "adjustbox",
+    "overlayfs"
   ],
   "enabled": true
 }
