@@ -5,7 +5,7 @@
 # molecule-podman tomli lz4 zstd lzlib pytest
 ansible==7.7.0
 ansible-compat==24.10.0
-ansible-core==2.14.17
+ansible-core==2.14.18
 ansible-lint==24.12.2
 attrs==25.3.0
 bcrypt==4.3.0
@@ -60,7 +60,7 @@ six==1.17.0
 subprocess-tee==0.4.2
 tomli==2.2.1
 typing_extensions==4.14.1
-urllib3==2.5.0
+urllib3==2.6.0
 wcmatch==10.1
 yamllint==1.37.1
 yapf==0.43.0
