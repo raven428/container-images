@@ -60,7 +60,7 @@ six==1.17.0
 subprocess-tee==0.4.2
 tomli==2.2.1
 typing_extensions==4.14.1
-urllib3==2.6.0
+urllib3==2.6.3
 wcmatch==10.1
 yamllint==1.37.1
 yapf==0.43.0
