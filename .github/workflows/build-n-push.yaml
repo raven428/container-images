@@ -7,7 +7,7 @@ on:
       - master
   pull_request:
   schedule:
-    - cron: "1 1 * * 1"
+    - cron: "1 1 * * 4"
 jobs:
   define-matrix:
     name: define matrix
