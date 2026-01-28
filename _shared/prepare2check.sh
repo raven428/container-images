@@ -58,6 +58,32 @@ deny_tabs() {
 }
 trap_with_arg cleanup INT QUIT ABRT KILL TERM STOP
 
+# Parse ignore files if corresponding env vars are set
+exclude_args=()
+
+# Function to parse ignore file and add patterns to exclude_args
+parse_ignore_file() {
+  local ignore_file="$1"
+  [[ ! -f "${ignore_file}" ]] && return
+  while IFS= read -r line; do
+    # Normalize line endings: strip a single trailing CR if present (for CRLF files)
+    line=${line%$'\r'}
+    # Skip comments and empty lines
+    [[ "${line}" =~ ^# ]] && continue
+    [[ "${line}" =~ ^[[:space:]]*$ ]] && continue
+    # Skip negations (!) - rsync doesn't support them
+    [[ "${line}" =~ ^\! ]] && continue
+    # Add --exclude for each pattern
+    exclude_args+=("--exclude=${line}")
+  done < "${ignore_file}"
+}
+
+# Parse .gitignore if USE_GITIGNORE is set
+[[ -n "${USE_GITIGNORE:-}" ]] && parse_ignore_file '.gitignore'
+
+# Parse .lintignore if USE_LINTIGNORE is set
+[[ -n "${USE_LINTIGNORE:-}" ]] && parse_ignore_file '.lintignore'
+
 orig_dir="${tmp_dir}/orig"
 trim_dir="${tmp_dir}/trim"
 echo -n "rsync to [${tmp_dir}] for checking… "
@@ -73,6 +99,7 @@ echo -n "rsync to [${tmp_dir}] for checking… "
   --exclude='/**/.terraform' \
   --exclude='/**/.terragrunt-cache' \
   --exclude='/ansible/roles/external' \
+  "${exclude_args[@]+"${exclude_args[@]}"}" \
   "$(readlink -f .)/." "${orig_dir}"
 for f in $(
   /usr/bin/env find \

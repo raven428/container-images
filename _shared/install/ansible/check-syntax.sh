@@ -26,8 +26,8 @@ PATH=$(readlink -f "$(echo "${PATH}" | awk -F ':' '{print $1}')"):$PATH
 export PATH
 # shellcheck disable=2086
 /usr/bin/env ansible-lint -c /root/.config/ansible-lint.yaml \
-  --exclude "${ANSIBLENTRY:-ansible}/roles/external" -f pep8 \
-  ${ANSIBLENTRY:-} 2>/tmp/ansible-lint-stderr
+  --exclude "${trim_dir}/${ANSIBLENTRY:-ansible}/external" -f pep8 \
+  ${trim_dir}/${ANSIBLENTRY:-} 2>/tmp/ansible-lint-stderr
 alrc=$?
 /usr/bin/env cat /tmp/ansible-lint-stderr
 [[ ${alrc} -gt 0 ]] && addfail 'ansible-lint'
