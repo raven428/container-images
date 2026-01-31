@@ -1,0 +1,48 @@
+---
+name: build AppImage
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+jobs:
+  build-appimage:
+    name: build ansible-11 AppImage
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      TAG: ansible-11
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          submodules: recursive
+
+      - name: build ansible-11 AppImage
+        run: |
+          sudo ./podman.sh
+          MANUAL_IMAGES_DIRS='ansible-builder/' _shared/_all/build.sh
+          TAG=${{ env.TAG }} _shared/_all/appimage.sh
+
+      - name: make draft and upload AppImage
+        if: >-
+          github.event_name == 'pull_request' || (
+            (github.event_name == 'push')
+          ) && github.ref == 'refs/heads/master'
+        uses: ncipollo/release-action@v1
+        with:
+          name: >
+            branch [${{
+              github.head_ref == '' && github.ref_name || github.head_ref
+            }}] AppImage binaries
+          draft: true
+          allowUpdates: true
+          tag: v999
+          artifacts: "appimage-output/*.AppImage"
+          body: >
+            branch [${{
+              github.head_ref == '' && github.ref_name || github.head_ref
+            }}] ansible-11 AppImage from recent commit by GitHub actions
