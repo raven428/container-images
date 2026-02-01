@@ -90,6 +90,24 @@ fi
 
 deactivate
 
+# Source common functions
+# shellcheck disable=SC1091
+source /workspace/_shared/install/ansible/common.sh
+
+# Extract ansible version from TAG (e.g., "ansible-11" -> "11")
+ANSIBLE_VERSION="${TAG#ansible-}"
+
+# Cleanup Python packages
+cleanup_python_packages "$APPDIR/usr/venv"
+
+# Apply patches based on ansible version
+PATCH_DIR="/workspace/_shared/install/ansible"
+apply_flush_line_patch "$APPDIR/usr/venv" "${PATCH_DIR}/flush-line.diff" "${ANSIBLE_VERSION}"
+apply_async_check_patch "$APPDIR/usr/venv" "${PATCH_DIR}/async-check.diff" "${ANSIBLE_VERSION}"
+
+# Return to APPDIR after patches (patch functions do cd)
+cd "$APPDIR"
+
 # Create AppRun
 echo "Creating AppRun..."
 cat > AppRun << EOF

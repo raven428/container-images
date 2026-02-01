@@ -46,7 +46,8 @@ make DESTDIR="${APPIMAGE_BUILD_DIR}/python-install" install
 echo "Downloading appimagetool..."
 cd "${APPIMAGE_BUILD_DIR}"
 curl -sLo appimagetool.AppImage \
-  https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+  "https://github.com/AppImage/appimagetool/releases/latest/download/\
+appimagetool-x86_64.AppImage"
 chmod +x appimagetool.AppImage
 
 # Cleanup build artifacts but keep results
