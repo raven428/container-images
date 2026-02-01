@@ -43,6 +43,7 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
   }
   current_date="$(/usr/bin/env date '+%Y%m%d')"
   /usr/bin/env podman build \
+    --build-arg TAG="${TAG}" \
     --network host \
     --cap-add=MAC_ADMIN,SYS_ADMIN \
     --security-opt apparmor=unconfined \

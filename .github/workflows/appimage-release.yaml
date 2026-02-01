@@ -1,0 +1,35 @@
+---
+name: release AppImage
+on:
+  push:
+    tags:
+      - "*"
+jobs:
+  release-appimage:
+    name: build and release AppImage
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      TAG: ansible-11
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          submodules: recursive
+
+      - name: build ansible-11 AppImage
+        run: |
+          sudo ./podman.sh
+          MANUAL_IMAGES_DIRS='ansible-builder/' _shared/_all/build.sh
+          TAG=${{ env.TAG }} _shared/_all/appimage.sh
+
+      - name: make release and upload AppImage
+        uses: ncipollo/release-action@v1
+        with:
+          name: ansible-11 AppImage ${{ github.ref_name }}
+          allowUpdates: true
+          artifacts: "appimage-output/*.AppImage"
+          body: version ${{ github.ref_name }} of ansible-11 AppImage
