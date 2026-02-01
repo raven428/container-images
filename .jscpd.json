@@ -1,0 +1,7 @@
+{
+  "ignore": [
+    ".github/workflows/appimages.yaml",
+    "sources/utils-ubuntu-22_04/files/install.sh",
+    "sources/opencode-ubuntu-22_04/files/install.sh"
+  ]
+}

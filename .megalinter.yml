@@ -18,9 +18,11 @@ EDITORCONFIG_EDITORCONFIG_CHECKER_CLI_EXECUTABLE:
 BASH_EXEC_FILTER_REGEX_EXCLUDE: >-
   _shared/profile-dmisu
 SPELL_CSPELL_FILTER_REGEX_EXCLUDE: "_shared/profile-dmisu|\
-  _shared/install/ansible/(flush-line|async-check)\\.diff"
+  _shared/install/ansible/.+\\.diff|\
+  sources/opencode-ubuntu-22_04/files/.+\\.diff"
 EDITORCONFIG_EDITORCONFIG_CHECKER_FILTER_REGEX_EXCLUDE: "_shared/profile-dmisu|\
-  _shared/install/ansible/(flush-line|async-check)\\.diff"
+  _shared/install/ansible/.+\\.diff|\
+  sources/opencode-ubuntu-22_04/files/.+\\.diff"
 EDITORCONFIG_EDITORCONFIG_CHECKER_PRE_COMMANDS:
   - command: |
       cat <<EOF > /ec-custom.sh
@@ -46,3 +48,5 @@ REPOSITORY_TRIVY_ARGUMENTS:
 REPOSITORY_DEVSKIM_ARGUMENTS:
   - "-f"
   - "text"
+SPELL_PROSELINT_FILTER_REGEX_EXCLUDE: "_shared/profile-dmisu/.claude/CLAUDE.md"
+MARKDOWN_MARKDOWNLINT_FILTER_REGEX_EXCLUDE: "_shared/profile-dmisu/.claude/CLAUDE.md"
