@@ -25,10 +25,9 @@ jobs:
         id: define-matrix
         run: |
           source _shared/_all/matrix.sh
-          echo "${DIR_SON}"
           FILTERED="$(echo "${DIR_SON}" | jq -Mc '[.[] | select(. |
             test("^ansible-[0-9]{2}$") or . == "some-other-container")]')"
-          echo "${FILTERED}"
+          [[ "${FILTERED}" == "[]" ]] && FILTERED='["__skip__"]'
           echo "images=${FILTERED}" >> "${GITHUB_OUTPUT}"
       - name: create release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
@@ -40,6 +39,7 @@ jobs:
   appimage:
     name: "build ${{ matrix.image }} AppImage"
     needs: define-matrix
+    if: ${{ !contains(fromJSON(needs.define-matrix.outputs.images), '__skip__') }}
     permissions:
       contents: write
     strategy:
