@@ -38,32 +38,27 @@ curl -sL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcu
 _1.9.1_linux_amd64.deb" -o /files/grpcurl.deb && dpkg -i /files/grpcurl.deb
 
 # opencode
-rm -Rfv /root
+cd /root
+curl -fsSL https://bun.sh/install | bash
+export PATH="$HOME/.bun/bin:$PATH"
+git clone https://github.com/anomalyco/opencode.git
+(cd opencode && git checkout "v${OPENCODE_VERSION}" && patch -p1 </files/opencode.diff &&
+  patch -p1 </files/version.diff)
+bun install --production --cwd /usr/local husky
+ln -sfv /usr/local/node_modules/husky/bin.js /usr/local/bin/husky
+bun install --production --cwd opencode
+bun run --cwd opencode/packages/opencode script/build.ts --single
+mv -vf opencode/packages/opencode/dist/opencode-linux-x64/bin/opencode /usr/local/bin
+apt-get purge -y nodejs
+rm -fv /etc/apt/sources.list.d/nodesource.list
+
+# image configuration
+rm -Rf /root
 mv -v /files/shared/profile-dmisu /root
 # shellcheck disable=2016
 find /root -type d -print0 | xargs chmod 755
 find /root -type f -print0 | xargs chmod 644
-cd /root
-curl -fsSL https://bun.sh/install | bash
-export PATH="$HOME/.bun/bin:$PATH"
-rm -vf .gitconfig
-git clone https://github.com/anomalyco/opencode.git
-git reset --hard HEAD
-mkdir -vp /usr/local/bun
-(cd opencode && git checkout "v${OPENCODE_VERSION}" && patch -p1 </files/opencode.diff &&
-  patch -p1 </files/version.diff && mv -v package.json packages /usr/local/bun)
-bun install --production --cwd /usr/local husky
-ln -sfv /usr/local/node_modules/husky/bin.js /usr/local/bin/husky
-bun install --production --cwd /usr/local/bun
-bun pm cache rm --cwd /usr/local/bun
-(cd /usr/local/bun/node_modules/.bun && rm -rf /root/.bun/install/cache /root/opencode \
-  '@ibm+plex@6.4.1/node_modules/@ibm/plex/IBM-Plex-Sans-JP' \
-  '@ibm+plex@6.4.1/node_modules/@ibm/plex/IBM-Plex-Sans-KR' \
-  '@cloudflare+workerd-linux-64@1.20251118.0/node_modules/@cloudflare/workerd-linux-64')
-
-# image configuration
 update-ca-certificates
-mkdir -vp /root/.bun/install/cache
 mv -vf /files/shared/sudoers /etc/sudoers
 chmod 400 /etc/sudoers
 
