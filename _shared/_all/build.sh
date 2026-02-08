@@ -5,6 +5,8 @@ MY_BIN="$(readlink -f "$0")"
 MY_PATH="$(dirname "${MY_BIN}")"
 # shellcheck source=/dev/null
 source "${MY_PATH}/vars.sh"
+# shellcheck source=/dev/null
+source "${MY_PATH}/../vars.sh"
 /usr/bin/env printf "\n———⟨ building: ⟩———\n"
 /usr/bin/rm -rf "${MY_PATH}/../profile-dmisu/.git"
 /usr/bin/env cp -r "${MY_PATH}/../../.git/modules/_shared/profile-dmisu" \
@@ -42,10 +44,15 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
     echo "returning to [${TAG}] building…"
   }
   current_date="$(/usr/bin/env date '+%Y%m%d')"
+  lh_var='localhost' # DevSkim: ignore DS162092
   /usr/bin/env podman build \
     --network host \
+    --build-arg TAG="${TAG}" \
+    --build-arg PYTHON_VERSION="${PYTHON_VERSION}" \
+    --build-arg PYENV_ROOT="${PYENV_ROOT}" \
     --cap-add=MAC_ADMIN,SYS_ADMIN \
     --security-opt apparmor=unconfined \
+    -t "${lh_var}/${TAG}:local" \
     -t "${TARGET_REGISTRY}/${TAG}:latest" \
     -t "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}" \
     -t "${TARGET_REGISTRY}/${TAG}:${current_date}" \

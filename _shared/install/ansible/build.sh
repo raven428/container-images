@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
 set -ueo pipefail
+env_dir="${PYENV_ROOT}/versions/${PYTHON_VERSION}"
+cd "${env_dir}"
+bin/python -m pip install --upgrade pip
+bin/python -m pip install -r /files/requirements.txt
+
+# Source common functions
 # shellcheck disable=SC1091
-source "${PYENV_ROOT}/versions/ansible/bin/activate"
-pip install --upgrade pip
-pip install -r files/requirements.txt
-# enable flush elsewhere molecule -v create doesn't progress "Wait for instance(s)
-# creation to complete" after "Create molecule instance(s)" task
-# https://github.com/vicamo/docker-pyenv/blob/main/jammy/Dockerfile
-# TASK external/nftables : Combine Rules when nft_merged_groups is set
-# failure with removed "ansible/plugins/test" for some reason
-find "${PYENV_ROOT}/versions" -depth \
-  \( \
-  \( -type d -a \( \
-  -name test -o -name tests -o -name __pycache__ \
-  \) -a -not -path '*/ansible/plugins/test' \) \
-  -o \( -type f -a \( -name '*.pyc' -o -name '*.pyo' -o -name '*.a' \) \) \
-  -o \( -type f -a -name 'wininst-*.exe' \) \
-  \) -exec rm -rf '{}' +
-cd "${PYENV_ROOT}/versions/ansible"
-patch -p0 </files/flush-line.diff
+source /files/common.sh
+
+# Extract ansible version from TAG
+ANSIBLE_VERSION="${TAG#ansible-}"
+
+# Cleanup Python packages
+cleanup_python_packages "${env_dir}"
+
+# Apply patches
+apply_flush_line_patch "${env_dir}" "/files/flush-line.diff" "${ANSIBLE_VERSION}"
+apply_async_check_patch "${env_dir}" "/files/async-check.diff" "${ANSIBLE_VERSION}"

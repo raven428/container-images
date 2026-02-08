@@ -1,6 +1,6 @@
 # kics-scan disable=555ab8f9-2001-455e-a077-f2d0f41e2fb9
 ---
-name: build and push
+name: containers
 on:
   push:
     branches:
@@ -24,8 +24,8 @@ jobs:
         run: |
           source _shared/_all/matrix.sh
           echo "images=${DIR_SON}" >> "${GITHUB_OUTPUT}"
-  build-n-push:
-    name: "build ${{ matrix.image }} image"
+  containers:
+    name: "build ${{ matrix.image }} container"
     needs: define-matrix
     strategy:
       fail-fast: false
@@ -34,10 +34,12 @@ jobs:
     timeout-minutes: 22
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - name: checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: true
+          fetch-tags: true
+          submodules: recursive
       - name: build and test images
         run: |
           sudo ./podman.sh
@@ -70,7 +72,7 @@ jobs:
     timeout-minutes: 3
     runs-on: ubuntu-latest
     needs:
-      - build-n-push
+      - containers
       - MegaLinter
     if: always()
     permissions:

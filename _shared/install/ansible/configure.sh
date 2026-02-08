@@ -5,7 +5,7 @@ chmod 400 /etc/sudoers
 # shellcheck disable=1091
 source /etc/environment
 sed -ri "s|PATH\s*=.+$|PATH='/ansbl:${PATH}'|g" /etc/environment
-ln -sfv "${PYENV_ROOT}/versions/ansible/bin" '/ansbl'
+ln -sfv "${PYENV_ROOT}/versions/${PYTHON_VERSION}/bin" '/ansbl'
 sed -i '/^auth[[:space:]]\+sufficient[[:space:]]\+pam_rootok\.so$/a\account sufficient pam_succeed_if.so uid = 0 use_uid quiet' /etc/pam.d/su
 mkdir -vp /root/.config/yapf
 mv -vf /files/style /root/.config/yapf/style

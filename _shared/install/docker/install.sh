@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -xueo pipefail
+set -ueo pipefail
 
 # generic packages
 apt-get update
