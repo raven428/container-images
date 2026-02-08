@@ -3,6 +3,9 @@ FROM ubuntu:22.04
 ENV LANG='en_US.UTF-8'
 ENV LC_TIME='en_GB.UTF-8'
 ENV LANGUAGE='en_US.UTF-8'
+ENV OPENCODE_VERSION='1.1.53'
+ENV OPENCODE_CHANNEL='latest'
 COPY files /files
 COPY _shared /files/shared
 RUN /files/install.sh
+VOLUME ["/root/.bun/install/cache"]

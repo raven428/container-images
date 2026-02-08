@@ -1,0 +1,89 @@
+# kics-scan disable=555ab8f9-2001-455e-a077-f2d0f41e2fb9
+---
+name: app-images
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - "*"
+  pull_request:
+jobs:
+  define-matrix:
+    name: define matrix
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      images: ${{ steps.define-matrix.outputs.images }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+      - name: define matrix
+        id: define-matrix
+        run: |
+          source _shared/_all/matrix.sh
+          echo "${DIR_SON}"
+          FILTERED="$(echo "${DIR_SON}" | jq -Mc '[.[] | select(. |
+            test("^ansible-[0-9]{2}$") or . == "some-other-container")]')"
+          echo "${FILTERED}"
+          echo "images=${FILTERED}" >> "${GITHUB_OUTPUT}"
+      - name: create release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          name: AppImage [v${{ github.ref_name }}] binaries
+          body: version [${{ github.ref_name }}] of AppImage binaries
+  appimage:
+    name: "build ${{ matrix.image }} AppImage"
+    needs: define-matrix
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.define-matrix.outputs.images) }}
+    timeout-minutes: 22
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          submodules: recursive
+      - name: build ${{ matrix.image }} AppImage
+        run: |
+          sudo ./podman.sh
+          MANUAL_IMAGES_DIRS='ansible-builder/' _shared/_all/build.sh
+          TAG='${{ matrix.image }}' _shared/_all/appimage.sh
+      - name: make draft and upload AppImage
+        if: >-
+          github.event_name == 'pull_request' || (
+            (github.event_name == 'push')
+          ) && github.ref == 'refs/heads/master'
+        uses: ncipollo/release-action@v1
+        with:
+          name: >
+            branch [${{
+              github.head_ref == '' && github.ref_name || github.head_ref
+            }}] of AppImage binaries
+          draft: true
+          allowUpdates: true
+          tag: v999
+          artifacts: "appimage-output/*.AppImage"
+          body: >
+            branch [${{
+              github.head_ref == '' && github.ref_name || github.head_ref
+            }}] of AppImage binaries from recent commit by GitHub actions
+      - name: make release and upload AppImage
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifacts: "appimage-output/*.AppImage"
+          name: AppImage [v${{ github.ref_name }}] binaries
+          body: version [${{ github.ref_name }}] of AppImage binaries

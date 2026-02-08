@@ -75,7 +75,7 @@ parse_ignore_file() {
     [[ "${line}" =~ ^\! ]] && continue
     # Add --exclude for each pattern
     exclude_args+=("--exclude=${line}")
-  done < "${ignore_file}"
+  done <"${ignore_file}"
 }
 
 # Parse .gitignore if USE_GITIGNORE is set

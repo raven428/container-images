@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -ueo pipefail
-diff="${diff}
-ansible-09/tmp
-linters-ubuntu-22_04/tmp"
+# shellcheck disable=2034
+PYTHON_VERSION='3.11.11'
+# shellcheck disable=2034
+PYENV_ROOT='/pye'
