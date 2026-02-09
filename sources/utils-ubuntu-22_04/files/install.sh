@@ -11,7 +11,8 @@ apt-get install -y --no-install-recommends \
   iftop nmon reptyr psmisc jq git bc lsof progress pv tree iproute2 net-tools \
   hostname dmidecode groff-base hdparm lshw iputils-ping iputils-arping locales \
   secure-delete moreutils less acl lz4 lzop lzma zstd unzip redis-tools mtr \
-  mysqltuner mariadb-client postgresql-client nftables iptables node-ws
+  mysqltuner mariadb-client postgresql-client nftables iptables ripgrep file \
+  binutils
 apt-get upgrade -y
 
 # https://learn.microsoft.com/en-us/sql/linux/sql-server-linux-setup-tools
