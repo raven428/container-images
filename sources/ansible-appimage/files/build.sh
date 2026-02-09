@@ -15,3 +15,16 @@ curl -sLm 11 \
 eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
 pyenv install "${PYTHON_VERSION}"
+
+# Download appimagetool
+APPIMAGE_BUILD_DIR='/usr/local/bin'
+echo "Downloading appimagetool..."
+mkdir -p "${APPIMAGE_BUILD_DIR}"
+cd "${APPIMAGE_BUILD_DIR}"
+curl -sLo appimagetool.AppImage \
+  "https://github.com/AppImage/appimagetool/releases/latest/download/\
+appimagetool-x86_64.AppImage"
+chmod +x appimagetool.AppImage
+
+echo "AppImage build environment ready:"
+echo "  appimagetool: ${APPIMAGE_BUILD_DIR}/appimagetool.AppImage"

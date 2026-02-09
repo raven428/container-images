@@ -58,7 +58,7 @@ jobs:
       - name: build ${{ matrix.image }} AppImage
         run: |
           sudo ./podman.sh
-          MANUAL_IMAGES_DIRS='ansible-builder/' _shared/_all/build.sh
+          MANUAL_IMAGES_DIRS='ansible-appimage/' _shared/_all/build.sh
           TAG='${{ matrix.image }}' _shared/_all/appimage.sh
       - name: make draft and upload AppImage
         if: >-

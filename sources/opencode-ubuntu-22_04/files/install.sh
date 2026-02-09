@@ -10,7 +10,8 @@ apt-get install -y --no-install-recommends \
   whois iotop netcat telnet bind9-utils bind9-host bind9-dnsutils gdisk p7zip \
   iftop nmon reptyr psmisc jq git bc lsof progress pv tree iproute2 net-tools \
   hostname dmidecode groff-base hdparm lshw iputils-ping iputils-arping locales \
-  secure-delete moreutils less acl lz4 lzop lzma zstd unzip mtr patch
+  secure-delete moreutils less acl lz4 lzop lzma zstd unzip mtr patch ripgrep file \
+  binutils
 cat >/etc/locale.gen <<'EOF'
 en_US.UTF-8 UTF-8
 en_GB.UTF-8 UTF-8
