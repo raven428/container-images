@@ -22,7 +22,7 @@ podman run --log-driver=none --rm --device /dev/fuse --cap-add SYS_ADMIN \
   --workdir /workspace \
   -e TAG="${TAG}" \
   -e IMAGE_VER="${IMAGE_VER}" \
-  ghcr.io/raven428/container-images/ansible-builder:latest \
+  ghcr.io/raven428/container-images/ansible-appimage:latest \
   bash /workspace/_shared/install/ansible/build-appimage.sh
 
 echo "AppImage built successfully: appimage-output/${TAG}-${IMAGE_VER}.AppImage"

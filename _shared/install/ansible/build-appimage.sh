@@ -15,7 +15,7 @@ APPIMAGETOOL='/usr/local/bin/appimagetool.AppImage'
 # Validate appimagetool exists
 if [[ ! -f "${APPIMAGETOOL}" ]]; then
   echo "Error: appimagetool not found at ${APPIMAGETOOL}"
-  echo "Make sure ansible-builder container was built correctly"
+  echo "Make sure ansible-appimage container was built correctly"
   exit 1
 fi
 
