@@ -84,6 +84,26 @@ export LD_LIBRARY_PATH="${HERE}/lib:${HERE}/lib64:${LD_LIBRARY_PATH}"
 export PATH="${HERE}/bin:${PATH}"
 export PYTHONHOME="${HERE}"
 export PYTHONPATH="${HERE}/lib/python"
+: "${ANSIBLE_USERDIR:="${HOME}/.ansible"}"
+/usr/bin/env mkdir -vp "${ANSIBLE_USERDIR}"/{ssh,tmp}
+/usr/bin/env cat >"${ANSIBLE_USERDIR}/ssh/config" <<SSHCONFIG
+# ssh config for Ansible
+SendEnv=LC_*
+SendEnv=LANG
+SendEnv=ANSIBLE_*
+SendEnv=RSYNC_RSH
+ForwardAgent=yes
+ControlMaster=auto
+ControlPersist=111m
+HostKeyAlgorithms=ssh-ed25519
+StrictHostKeyChecking=accept-new
+PreferredAuthentications=publickey
+ControlPath=${ANSIBLE_USERDIR}/ssh/host-%r@%h:%p
+UserKnownHostsFile=${ANSIBLE_USERDIR}/ssh/known_hosts
+
+Include ${ANSIBLE_USERDIR}/ssh/conf.d/*
+SSHCONFIG
+export ANSIBLE_SSH_ARGS="-F ${ANSIBLE_USERDIR}/ssh/config"
 # Autodispatch mode
 if [[ "${CMD}" != "AppRun" && -x "${HERE}/bin/${CMD}" ]]; then
   exec "${HERE}/bin/${CMD}" "$@"
