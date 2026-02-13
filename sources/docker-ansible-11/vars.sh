@@ -2,7 +2,7 @@
 set -ueo pipefail
 # shellcheck disable=2034
 {
-  IMAGE_VER='000'
+  IMAGE_VER='001'
   DEPENDS='ansible-11/'
   IMAGE_TEST='../../_shared/test/systemd/test.sh'
 }
