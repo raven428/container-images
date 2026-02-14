@@ -1,0 +1,27 @@
+diff --git a/bun.lock b/bun.lock
+index dd9790f4b..2f573ae33 100644
+--- a/bun.lock
++++ b/bun.lock
+@@ -496,6 +496,9 @@
+     "web-tree-sitter",
+     "tree-sitter-bash",
+   ],
++  "patchedDependencies": {
++    "@opentui/core@0.1.77": "patches/opentui-core.diff",
++  },
+   "overrides": {
+     "@types/bun": "catalog:",
+     "@types/node": "catalog:",
+diff --git a/package.json b/package.json
+index 65cd0dea8..94d85b234 100644
+--- a/package.json
++++ b/package.json
+@@ -100,5 +100,7 @@
+     "@types/bun": "catalog:",
+     "@types/node": "catalog:"
+   },
+-  "patchedDependencies": {}
++  "patchedDependencies": {
++    "@opentui/core@0.1.77": "patches/opentui-core.diff"
++  }
+ }
