@@ -1,0 +1,76 @@
+diff --git a/index-h3dbfsf6.js b/index-h3dbfsf6.js
+index abc123..def456 100644
+--- a/index-h3dbfsf6.js
++++ b/index-h3dbfsf6.js
+@@ -2227,7 +2227,7 @@
+   if (s === "\x1B[I" || s === "\x1B[O") {
+     return null;
+   }
+-  if (/^\x1b\][\d;].*(\x1b\\|\x07)$/.test(s)) {
++  if (/^\x1b\][\d;].*\x1b\\$/.test(s)) {
+     return null;
+   }
+   if (s === "\x1B[200~" || s === "\x1B[201~") {
+@@ -6011,7 +6011,7 @@
+   if (!data.startsWith(ESC + "]")) {
+     return "complete";
+   }
+-  if (data.endsWith(ESC + "\\") || data.endsWith("\x07")) {
++  if (data.endsWith(ESC + "\\")) {
+     return "complete";
+   }
+   return "incomplete";
+@@ -9025,8 +9025,8 @@
+ }
+ 
+ // src/lib/terminal-palette.ts
+-var OSC4_RESPONSE = /\x1b]4;(\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g;
+-var OSC_SPECIAL_RESPONSE = /\x1b](\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g;
++var OSC4_RESPONSE = /\x1b]4;(\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x1b\\)/g;
++var OSC_SPECIAL_RESPONSE = /\x1b](\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x1b\\)/g;
+ function scaleComponent(comp) {
+   const val = parseInt(comp, 16);
+   const maxIn = (1 << 4 * comp.length) - 1;
+@@ -9104,7 +9104,7 @@
+       this.activeTimers.push(timer);
+       inp.on("data", onData);
+       this.activeListeners.push({ event: "data", handler: onData });
+-      this.writeOsc("\x1B]4;0;?\x07");
++      this.writeOsc("\x1B]4;0;?\x1b\\");
+     });
+   }
+   async queryPalette(indices, timeoutMs = 1200) {
+@@ -9171,7 +9171,7 @@
+       this.activeTimers.push(timer);
+       inp.on("data", onData);
+       this.activeListeners.push({ event: "data", handler: onData });
+-      this.writeOsc(indices.map((i) => `\x1B]4;${i};?\x07`).join(""));
++      this.writeOsc(indices.map((i) => `\x1B]4;${i};?\x1b\\`).join(""));
+     });
+   }
+   async querySpecialColors(timeoutMs = 1200) {
+@@ -9247,15 +9247,15 @@
+       inp.on("data", onData);
+       this.activeListeners.push({ event: "data", handler: onData });
+       this.writeOsc([
+-        "\x1B]10;?\x07",
+-        "\x1B]11;?\x07",
+-        "\x1B]12;?\x07",
+-        "\x1B]13;?\x07",
+-        "\x1B]14;?\x07",
+-        "\x1B]15;?\x07",
+-        "\x1B]16;?\x07",
+-        "\x1B]17;?\x07",
+-        "\x1B]19;?\x07"
++        "\x1B]10;?\x1b\\",
++        "\x1B]11;?\x1b\\",
++        "\x1B]12;?\x1b\\",
++        "\x1B]13;?\x1b\\",
++        "\x1B]14;?\x1b\\",
++        "\x1B]15;?\x1b\\",
++        "\x1B]16;?\x1b\\",
++        "\x1B]17;?\x1b\\",
++        "\x1B]19;?\x1b\\"
+       ].join(""));
+     });
+   }
