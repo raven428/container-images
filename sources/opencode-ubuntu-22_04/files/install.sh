@@ -40,6 +40,8 @@ export PATH="$HOME/.bun/bin:$PATH"
 git clone https://github.com/anomalyco/opencode.git
 (cd opencode && git checkout "v${OPENCODE_VERSION}" && patch -p1 </files/opencode.diff &&
   patch -p1 </files/version.diff)
+# && patch -p1 </files/bun.diff
+cp -rv /files/opentui-core.diff opencode/patches
 bun install --production --cwd /usr/local husky
 ln -sfv /usr/local/node_modules/husky/bin.js /usr/local/bin/husky
 bun install --production --cwd opencode
