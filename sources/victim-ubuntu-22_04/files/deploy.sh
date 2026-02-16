@@ -9,7 +9,7 @@ set -euo pipefail
   /usr/bin/env sudo apt-get update
   /usr/bin/env sudo apt-get -y install --no-install-recommends systemd-container less \
     moreutils nftables
-  /usr/bin/env sudo nft flush ruleset
+  # /usr/bin/env sudo nft flush ruleset
 )
 /usr/bin/env sudo machinectl -s SIGKILL kill "${NSP_NAME}" || true
 /usr/bin/env podman rm -f "${NSP_NAME}" || true
