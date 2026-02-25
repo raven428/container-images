@@ -28,12 +28,7 @@ curl -sL "https://dl.k8s.io/release/$(curl -L -s \
   https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o kubectl
 curl -sL \
   https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o yq
-cat >/usr/local/bin/opencode <<'EOF'
-#!/usr/bin/env bash
-/root/.bun/bin/bun run --cwd /usr/local/bun/packages/opencode \
-  --conditions=browser src/index.ts $@
-EOF
-chmod -v 755 opencode kubectl yq
+chmod -v 755 kubectl yq
 curl -sL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 curl -sL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl\
 _1.9.1_linux_amd64.deb" -o /files/grpcurl.deb && dpkg -i /files/grpcurl.deb
@@ -45,6 +40,8 @@ export PATH="$HOME/.bun/bin:$PATH"
 git clone https://github.com/anomalyco/opencode.git
 (cd opencode && git checkout "v${OPENCODE_VERSION}" && patch -p1 </files/opencode.diff &&
   patch -p1 </files/version.diff)
+# && patch -p1 </files/bun.diff
+cp -rv /files/opentui-core.diff opencode/patches
 bun install --production --cwd /usr/local husky
 ln -sfv /usr/local/node_modules/husky/bin.js /usr/local/bin/husky
 bun install --production --cwd opencode
