@@ -6,7 +6,7 @@ apt-get update
 export DEBIAN_FRONTEND=noninteractive
 apt-get install -y --no-install-recommends systemd iproute2 python3-apt aptitude less \
   xz-utils python3-psutil python3-zstd python3-lz4 secure-delete openssh-server curl \
-  ca-certificates xz-utils
+  ca-certificates xz-utils git
 
 # https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
 install -m 0755 -d /etc/apt/keyrings
