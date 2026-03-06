@@ -39,7 +39,7 @@ curl -fsSL https://bun.sh/install | bash
 export PATH="$HOME/.bun/bin:$PATH"
 git clone https://github.com/anomalyco/opencode.git
 (cd opencode && git checkout "v${OPENCODE_VERSION}" && patch -p1 </files/opencode.diff &&
-  patch -p1 </files/version.diff)
+  patch -p1 </files/version.diff && patch -p1 </files/ctrl-enter.diff)
 # && patch -p1 </files/bun.diff
 cp -rv /files/opentui-core.diff opencode/patches
 bun install --production --cwd /usr/local husky
