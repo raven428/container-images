@@ -40,19 +40,22 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           submodules: recursive
+      - name: patch IMAGE_VER for pull request
+        if: github.event_name == 'pull_request'
+        run: >
+          sed -i "s/IMAGE_VER='[^']*'/IMAGE_VER='999'/"
+          "sources/${{ matrix.image }}/vars.sh"
       - name: build and test images
         run: |
           sudo ./podman.sh
           MANUAL_IMAGES_DIRS='${{ matrix.image }}/' _shared/_all/build.sh
       - name: login to ghcr
-        if: "github.ref == 'refs/heads/master'"
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.REGISTRY_WRITER }}
       - name: push images
-        if: "github.ref == 'refs/heads/master'"
         run: MANUAL_IMAGES_DIRS='${{ matrix.image }}/' _shared/_all/push.sh
   MegaLinter:
     name: MegaLinter
