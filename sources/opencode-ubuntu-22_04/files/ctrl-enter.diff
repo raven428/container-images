@@ -44,7 +44,7 @@ index 9186dcfa3..e2881ed25 100644
      }
      if (event.key === "Escape") {
 diff --git a/packages/app/src/components/settings-general.tsx b/packages/app/src/components/settings-general.tsx
-index b31cfb6cc..39833c888 100644
+index b31cfb6cc..cbf927a35 100644
 --- a/packages/app/src/components/settings-general.tsx
 +++ b/packages/app/src/components/settings-general.tsx
 @@ -8,7 +8,7 @@ import { showToast } from "@opencode-ai/ui/toast"
@@ -61,7 +61,7 @@ index b31cfb6cc..39833c888 100644
  // To prevent audio from overlapping/playing very quickly when navigating the settings menus,
  // delay the playback by 100ms during quick selection changes and pause existing sounds.
 -const playDemoSound = (src: string) => {
-+const playDemoSound = (src: string | undefined) => {
++const playDemoSound = (src: string | null) => {
    if (demoSoundState.cleanup) {
      demoSoundState.cleanup()
    }
@@ -79,7 +79,7 @@ index b31cfb6cc..39833c888 100644
                  onSelect={(option) => {
                    if (!option) return
 -                  settings.sounds.setAgent(option.id)
-+                  settings.sounds.setAgent(option.id === SOUND_NONE_ID ? undefined : option.id)
++                  settings.sounds.setAgent(option.id === SOUND_NONE_ID ? null : option.id)
                    playDemoSound(option.src)
                  }}
                  variant="secondary"
@@ -97,7 +97,7 @@ index b31cfb6cc..39833c888 100644
                  onSelect={(option) => {
                    if (!option) return
 -                  settings.sounds.setPermissions(option.id)
-+                  settings.sounds.setPermissions(option.id === SOUND_NONE_ID ? undefined : option.id)
++                  settings.sounds.setPermissions(option.id === SOUND_NONE_ID ? null : option.id)
                    playDemoSound(option.src)
                  }}
                  variant="secondary"
@@ -115,12 +115,12 @@ index b31cfb6cc..39833c888 100644
                  onSelect={(option) => {
                    if (!option) return
 -                  settings.sounds.setErrors(option.id)
-+                  settings.sounds.setErrors(option.id === SOUND_NONE_ID ? undefined : option.id)
++                  settings.sounds.setErrors(option.id === SOUND_NONE_ID ? null : option.id)
                    playDemoSound(option.src)
                  }}
                  variant="secondary"
 diff --git a/packages/app/src/context/settings.tsx b/packages/app/src/context/settings.tsx
-index 19b3846f8..0d0249388 100644
+index 19b3846f8..c476212fb 100644
 --- a/packages/app/src/context/settings.tsx
 +++ b/packages/app/src/context/settings.tsx
 @@ -10,9 +10,9 @@ export interface NotificationSettings {
@@ -130,9 +130,9 @@ index 19b3846f8..0d0249388 100644
 -  agent: string
 -  permissions: string
 -  errors: string
-+  agent: string | undefined
-+  permissions: string | undefined
-+  errors: string | undefined
++  agent: string | null
++  permissions: string | null
++  errors: string | null
  }
 
  export interface Settings {
@@ -141,17 +141,17 @@ index 19b3846f8..0d0249388 100644
        sounds: {
          agent: createMemo(() => store.sounds?.agent ?? defaultSettings.sounds.agent),
 -        setAgent(value: string) {
-+        setAgent(value: string | undefined) {
++        setAgent(value: string | null) {
            setStore("sounds", "agent", value)
          },
          permissions: createMemo(() => store.sounds?.permissions ?? defaultSettings.sounds.permissions),
 -        setPermissions(value: string) {
-+        setPermissions(value: string | undefined) {
++        setPermissions(value: string | null) {
            setStore("sounds", "permissions", value)
          },
          errors: createMemo(() => store.sounds?.errors ?? defaultSettings.sounds.errors),
 -        setErrors(value: string) {
-+        setErrors(value: string | undefined) {
++        setErrors(value: string | null) {
            setStore("sounds", "errors", value)
          },
        },
@@ -168,7 +168,7 @@ index 32c4695db..7d5472f79 100644
    "sound.option.alert02": "Alert 02",
    "sound.option.alert03": "Alert 03",
 diff --git a/packages/app/src/utils/sound.ts b/packages/app/src/utils/sound.ts
-index 6dea812ec..30b9b7a13 100644
+index 6dea812ec..2ae53c0b0 100644
 --- a/packages/app/src/utils/sound.ts
 +++ b/packages/app/src/utils/sound.ts
 @@ -44,7 +44,10 @@ import yup04 from "@opencode-ai/ui/audio/yup-04.aac"
@@ -178,19 +178,31 @@ index 6dea812ec..30b9b7a13 100644
 +export const SOUND_NONE_ID = "none"
 +
  export const SOUND_OPTIONS = [
-+  { id: SOUND_NONE_ID, label: "sound.option.none", src: undefined },
++  { id: SOUND_NONE_ID, label: "sound.option.none", src: null },
    { id: "alert-01", label: "sound.option.alert01", src: alert01 },
    { id: "alert-02", label: "sound.option.alert02", src: alert02 },
    { id: "alert-03", label: "sound.option.alert03", src: alert03 },
-@@ -95,7 +98,7 @@ export const SOUND_OPTIONS = [
+@@ -95,15 +98,15 @@ export const SOUND_OPTIONS = [
  export type SoundOption = (typeof SOUND_OPTIONS)[number]
  export type SoundID = SoundOption["id"]
 
 -const soundById = Object.fromEntries(SOUND_OPTIONS.map((s) => [s.id, s.src])) as Record<SoundID, string>
-+const soundById = Object.fromEntries(SOUND_OPTIONS.map((s) => [s.id, s.src])) as Record<SoundID, string | undefined>
++const soundById = Object.fromEntries(SOUND_OPTIONS.map((s) => [s.id, s.src])) as Record<SoundID, string | null>
 
- export function soundSrc(id: string | undefined) {
-   if (!id) return
+-export function soundSrc(id: string | undefined) {
+-  if (!id) return
+-  if (!(id in soundById)) return
++export function soundSrc(id: string | null) {
++  if (!id) return null
++  if (!(id in soundById)) return null
+   return soundById[id as SoundID]
+ }
+
+-export function playSound(src: string | undefined) {
++export function playSound(src: string | null) {
+   if (typeof Audio === "undefined") return
+   if (!src) return
+   const audio = new Audio(src)
 diff --git a/packages/opencode/script/build.ts b/packages/opencode/script/build.ts
 index f0b3fa828..042993c93 100755
 --- a/packages/opencode/script/build.ts
