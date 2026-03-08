@@ -17,38 +17,20 @@ en_US.UTF-8 UTF-8
 en_GB.UTF-8 UTF-8
 EOF
 locale-gen
-apt-get upgrade -y
-curl -fsSL https://deb.nodesource.com/setup_22.x | bash
-apt-get install -y --no-install-recommends nodejs
 
 # direct download
 mkdir -vp /usr/local/bin
 cd /usr/local/bin
-curl -sL "https://dl.k8s.io/release/$(curl -L -s \
-  https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o kubectl
-curl -sL \
-  https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o yq
-chmod -v 755 kubectl yq
+curl -sLo kubectl "https://dl.k8s.io/release/$(curl -L -s \
+  https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+curl -sLo yq \
+  https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+curl -sLo opencode "https://github.com/raven428/opencode-ctrl/releases/\
+download/v1.2.16p1/opencode-v1_2_16-linux-x64"
+chmod -v 755 opencode kubectl yq
 curl -sL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 curl -sL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl\
 _1.9.1_linux_amd64.deb" -o /files/grpcurl.deb && dpkg -i /files/grpcurl.deb
-
-# opencode
-cd /root
-curl -fsSL https://bun.sh/install | bash
-export PATH="$HOME/.bun/bin:$PATH"
-git clone https://github.com/anomalyco/opencode.git
-(cd opencode && git checkout "v${OPENCODE_VERSION}" && patch -p1 </files/opencode.diff &&
-  patch -p1 </files/version.diff && patch -p1 </files/ctrl-enter.diff)
-# && patch -p1 </files/bun.diff
-cp -rv /files/opentui-core.diff opencode/patches
-bun install --production --cwd /usr/local husky
-ln -sfv /usr/local/node_modules/husky/bin.js /usr/local/bin/husky
-bun install --production --cwd opencode
-bun run --cwd opencode/packages/opencode script/build.ts --single
-mv -vf opencode/packages/opencode/dist/opencode-linux-x64/bin/opencode /usr/local/bin
-apt-get purge -y nodejs
-rm -fv /etc/apt/sources.list.d/nodesource.list
 
 # image configuration
 rm -Rf /root
