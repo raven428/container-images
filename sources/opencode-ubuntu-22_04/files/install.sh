@@ -26,7 +26,7 @@ curl -sLo kubectl "https://dl.k8s.io/release/$(curl -L -s \
 curl -sLo yq \
   https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
 curl -sLo opencode "https://github.com/raven428/opencode-ctrl/releases/\
-download/v1.2.16p1/opencode-v1_2_16-linux-x64"
+download/v1.1.53p0/opencode-v1_1_53-linux-x64"
 chmod -v 755 opencode kubectl yq
 curl -sL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 curl -sL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl\
