@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 set -ueo pipefail
-export IMAGE_VER='004'
+export IMAGE_VER='005'
 /usr/bin/env rm -rfv "sources/${TAG}/_shared"
 /usr/bin/env cp -rfv _shared "sources/${TAG}"
