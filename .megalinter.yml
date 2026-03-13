@@ -50,3 +50,4 @@ REPOSITORY_DEVSKIM_ARGUMENTS:
   - "text"
 SPELL_PROSELINT_FILTER_REGEX_EXCLUDE: "_shared/profile-dmisu/.claude/CLAUDE.md"
 MARKDOWN_MARKDOWNLINT_FILTER_REGEX_EXCLUDE: "_shared/profile-dmisu/.claude/CLAUDE.md"
+SPELL_LYCHEE_CONFIG_FILE: ".lychee.toml"
