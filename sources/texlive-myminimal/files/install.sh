@@ -3,9 +3,25 @@ set -ueo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends fonts-freefont-otf less
-# no more workaround https://tex.stackexchange.com/questions/750538 at 2026-01-05
-tlmgr option repository https://texlive.info/tlnet-archive/2025/06/01/tlnet/
-tlmgr update --self --all
+_tl2024_repos=(
+  'https://ftp.math.utah.edu/pub/tex/historic/systems/texlive/2024/tlnet-final/'
+  'https://ftp.tu-chemnitz.de/pub/tug/historic/systems/texlive/2024/tlnet-final/'
+  'https://pi.kwarc.info/historic/systems/texlive/2024/tlnet-final/'
+  'https://mirrors.tuna.tsinghua.edu.cn/tex-historic-archive/systems/texlive/2024/tlnet-final/'
+  'https://mirror.nju.edu.cn/tex-historic/systems/texlive/2024/tlnet-final/'
+)
+_repo_set=false
+for _repo in "${_tl2024_repos[@]}"; do
+  if tlmgr option repository "$_repo" && tlmgr update --self; then
+    _repo_set=true
+    break
+  fi
+done
+if [[ "$_repo_set" == false ]]; then
+  echo 'Error: All TeX Live repositories are unreachable' >&2
+  exit 1
+fi
+tlmgr update --all
 tlmgr install xetex sourceserifpro sourcesanspro polyglossia fontspec \
   koma-script graphics geometry soul infwarerr etexcmds enumitem xstring roboto \
   extsizes lipsum supertabular cellspace nopageno multirow numprint numspell \
