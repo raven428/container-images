@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ueo pipefail
 # podman
-/files/podman.sh
+/files/shared/podman.sh
 # generic packages
 export DEBIAN_FRONTEND=noninteractive
 apt-get install -y --no-install-recommends \

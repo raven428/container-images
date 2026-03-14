@@ -6,7 +6,7 @@ apt-get update
 source /etc/os-release
 # shellcheck disable=SC1091
 source /files/shared/install/ansible/common.sh
-[[ -e /files/podman.sh ]] && /files/podman.sh
+[[ -e /files/shared/podman.sh ]] && /files/shared/podman.sh
 add_pkg=''
 [[ "${ID}" = 'ubuntu' && "${VERSION_ID%%.*}" -ge 24 ]] && add_pkg='systemd-resolved'
 # shellcheck disable=2046

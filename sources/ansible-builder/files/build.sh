@@ -2,13 +2,11 @@
 set -ueo pipefail
 export PATH="$PYENV_ROOT/bin:$PATH"
 export DEBIAN_FRONTEND='noninteractive'
-
 apt-get update
 apt-get install -y --no-install-recommends git curl libreadline-dev libsqlite3-dev less \
   libbz2-dev gcc g++ make zlib1g-dev libssl-dev libffi-dev liblzma-dev patch patchelf \
   libncursesw5-dev xz-utils file fuse
 rm -rf /var/lib/apt/lists/*
-
 # Install pyenv
 curl -sLm 11 \
   https://github.com/pyenv/pyenv-installer/raw/master/bin/pyenv-installer | bash
