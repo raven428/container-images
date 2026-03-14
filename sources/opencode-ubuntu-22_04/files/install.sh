@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 set -ueo pipefail
-
 # podman
 /files/podman.sh
-
 # generic packages
 export DEBIAN_FRONTEND=noninteractive
 apt-get install -y --no-install-recommends \
-  bash apt-utils apt-file ca-certificates ethtool bash-completion tcpdump less \
+  bash apt-utils apt-file ca-certificates ethtool bash-completion tcpdump less xxd \
   vim tmux screen curl wget rsync xz-utils pixz nmap atop htop traceroute sudo \
   whois iotop netcat-openbsd telnet bind9-utils bind9-host bind9-dnsutils gdisk p7zip \
   iftop nmon reptyr psmisc jq git bc lsof progress pv tree iproute2 net-tools \
   hostname dmidecode groff-base hdparm lshw iputils-ping iputils-arping locales \
   secure-delete moreutils less acl lz4 lzop lzma zstd unzip mtr patch ripgrep file \
-  binutils bsdextrautils openssh-client fuse-overlayfs libcap2-bin
+  redis-tools mysqltuner mariadb-client postgresql-client nftables iptables \
+  binutils bsdextrautils openssh-client fuse-overlayfs libcap2-bin squashfs-tools \
+  squashfuse
+apt-get upgrade -y
 cat >/etc/locale.gen <<'EOF'
 en_US.UTF-8 UTF-8
 en_GB.UTF-8 UTF-8
@@ -69,8 +70,7 @@ setcap cap_setuid+ep /usr/bin/newuidmap
 setcap cap_setgid+ep /usr/bin/newgidmap
 # subuid/subgid: range visible inside outer container (uid 1..65536),
 # with a hole at 1000 (coder's own uid)
-printf 'root:1:999\ncoder:1001:64535\n' >/etc/subuid
-printf 'root:1:999\ncoder:1001:64535\n' >/etc/subgid
+printf 'root:1001:98998\ncoder:100000:899999\n' | tee /etc/subuid /etc/subgid
 # system-wide containers.conf for nested podman
 mkdir -vp /etc/containers
 cat <<'EOF' >/etc/containers/containers.conf

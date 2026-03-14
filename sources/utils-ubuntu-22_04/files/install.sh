@@ -5,15 +5,24 @@ set -ueo pipefail
 apt-get update
 export DEBIAN_FRONTEND=noninteractive
 apt-get install -y --no-install-recommends \
-  bash apt-utils apt-file ca-certificates ethtool bash-completion dstat tcpdump less \
+  bash apt-utils apt-file ca-certificates ethtool bash-completion tcpdump less xxd \
   vim tmux screen curl wget rsync xz-utils pixz nmap atop htop traceroute sudo \
   whois iotop netcat telnet bind9-utils bind9-host bind9-dnsutils gdisk p7zip \
   iftop nmon reptyr psmisc jq git bc lsof progress pv tree iproute2 net-tools \
   hostname dmidecode groff-base hdparm lshw iputils-ping iputils-arping locales \
-  secure-delete moreutils less acl lz4 lzop lzma zstd unzip redis-tools mtr \
-  mysqltuner mariadb-client postgresql-client nftables iptables ripgrep file \
-  binutils bsdextrautils
+  secure-delete moreutils less acl lz4 lzop lzma zstd unzip mtr patch ripgrep file \
+  redis-tools mysqltuner mariadb-client postgresql-client nftables iptables \
+  binutils bsdextrautils openssh-client fuse-overlayfs libcap2-bin squashfs-tools \
+  squashfuse
 apt-get upgrade -y
+cat >/etc/locale.gen <<'EOF'
+en_US.UTF-8 UTF-8
+en_GB.UTF-8 UTF-8
+EOF
+locale-gen
+pam_line='account sufficient pam_succeed_if.so uid = 0 use_uid quiet'
+sed -i "/^auth[[:space:]]\+sufficient[[:space:]]\+pam_rootok\.so$/a ${pam_line}" \
+  /etc/pam.d/su
 
 # https://learn.microsoft.com/en-us/sql/linux/sql-server-linux-setup-tools
 curl -sL https://packages.microsoft.com/keys/microsoft.asc |
@@ -61,11 +70,6 @@ find /root -type d -print0 | xargs chmod 755
 find /root -type f -print0 | xargs chmod 644
 mv -vf /files/shared/sudoers /etc/sudoers
 chmod 400 /etc/sudoers
-cat >/etc/locale.gen <<'EOF'
-en_US.UTF-8 UTF-8
-en_GB.UTF-8 UTF-8
-EOF
-locale-gen
 
 # cleanup
 rm -Rf /usr/share/doc /usr/share/man /var/lib/apt/lists/* /root/.cache/pip /files
