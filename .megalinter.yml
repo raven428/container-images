@@ -15,12 +15,13 @@ REPOSITORY_CHECKOV_ARGUMENTS: >-
 PRINT_ALL_FILES: true
 EDITORCONFIG_EDITORCONFIG_CHECKER_CLI_EXECUTABLE:
   - /ec-custom.sh
-BASH_EXEC_FILTER_REGEX_EXCLUDE: >-
-  _shared/profile-dmisu
-SPELL_CSPELL_FILTER_REGEX_EXCLUDE: "_shared/profile-dmisu|\
-  _shared/install/ansible/.+\\.diff|\
+SPELL_CSPELL_PRE_COMMANDS:
+  - command: |
+      npm install --prefix /node-deps @cspell/dict-ru_ru @cspell/dict-software-terms
+    cwd: root
+SPELL_CSPELL_FILTER_REGEX_EXCLUDE: "_shared/install/ansible/.+\\.diff|\
   sources/opencode-ubuntu-22_04/files/.+\\.diff"
-EDITORCONFIG_EDITORCONFIG_CHECKER_FILTER_REGEX_EXCLUDE: "_shared/profile-dmisu|\
+EDITORCONFIG_EDITORCONFIG_CHECKER_FILTER_REGEX_EXCLUDE: "\
   _shared/install/ansible/.+\\.diff|\
   sources/opencode-ubuntu-22_04/files/.+\\.diff"
 EDITORCONFIG_EDITORCONFIG_CHECKER_PRE_COMMANDS:
@@ -48,6 +49,6 @@ REPOSITORY_TRIVY_ARGUMENTS:
 REPOSITORY_DEVSKIM_ARGUMENTS:
   - "-f"
   - "text"
-SPELL_PROSELINT_FILTER_REGEX_EXCLUDE: "_shared/profile-dmisu/.claude/CLAUDE.md"
-MARKDOWN_MARKDOWNLINT_FILTER_REGEX_EXCLUDE: "_shared/profile-dmisu/.claude/CLAUDE.md"
 SPELL_LYCHEE_CONFIG_FILE: ".lychee.toml"
+REPOSITORY_KINGFISHER_ARGUMENTS: "--exclude .git"
+SPELL_PROSELINT_FILTER_REGEX_EXCLUDE: "\\.github\/"
