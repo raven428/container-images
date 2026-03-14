@@ -53,10 +53,15 @@ fi
 
 # Source common functions
 # shellcheck disable=SC1091
-source /workspace/_shared/install/ansible/common.sh
+source /files/shared/install/ansible/common.sh
 
 # Extract ansible version from TAG (e.g., "ansible-11" -> "11")
 ANSIBLE_VERSION="${TAG#ansible-}"
+
+# Copy system runtime libraries into AppDir
+echo "Bundling system libraries..."
+read -ra _pkg_array <<<"$(python_runtime_packages)"
+copy_system_libs "$APPDIR" "${_pkg_array[@]}"
 
 # Cleanup Python packages
 cleanup_python_packages "$APPDIR"

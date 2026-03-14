@@ -6,4 +6,5 @@ ENV PATH="/ansbl:$PATH"
 ENV PYENV_ROOT=${PYENV_ROOT}
 ENV PYTHON_VERSION=${PYTHON_VERSION}
 COPY files /files
+COPY _shared /files/shared
 RUN /files/install.sh && /files/build.sh

@@ -35,6 +35,43 @@ apply_flush_line_patch() {
   patch -p0 <"${patch_file}"
 }
 
+copy_system_libs() {
+  local appdir="$1"
+  shift
+  local packages=("$@")
+  echo "Copying system libraries from packages: ${packages[*]}"
+  local lib_dir="${appdir}/lib"
+  mkdir -p "${lib_dir}"
+  for pkg in "${packages[@]}"; do
+    # dpkg may not know about meta-packages or virtual ones — skip silently
+    dpkg -L "${pkg}" 2>/dev/null || continue
+  done | grep -E '\.so(\.[0-9]+)*$' | while read -r src; do
+    [[ -e "${src}" || -L "${src}" ]] || continue
+    dst="${lib_dir}/$(basename "${src}")"
+    if [[ -L "${src}" ]]; then
+      # Preserve symlinks as-is (relative target kept)
+      ln -sf "$(readlink "${src}")" "${dst}"
+    else
+      cp -a "${src}" "${dst}"
+    fi
+  done
+}
+
+find_package() {
+  apt-cache search --names-only "$1" 2>/dev/null |
+    awk '{printf "%s ", $1}'
+}
+
+python_runtime_packages() {
+  find_package '^libreadline[_\.0-9\-]+$'
+  find_package '^libsqlite[_\.0-9\-]+$'
+  find_package '^libbz[_\.0-9\-]+$'
+  find_package '^zlib[\.0-9\-]+[a-z]$'
+  find_package '^libssl[0-9]'
+  find_package '^libffi[0-9]+$'
+  find_package '^liblzma[0-9]+$'
+}
+
 apply_async_check_patch() {
   local python_root="$1"
   local patch_file="$2"
