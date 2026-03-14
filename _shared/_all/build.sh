@@ -8,10 +8,10 @@ source "${MY_PATH}/vars.sh"
 # shellcheck source=/dev/null
 source "${MY_PATH}/../vars.sh"
 /usr/bin/env printf "\n———⟨ building: ⟩———\n"
-/usr/bin/rm -rf "${MY_PATH}/../profile-dmisu/.git"
-/usr/bin/env cp -r "${MY_PATH}/../../.git/modules/_shared/profile-dmisu" \
-  "${MY_PATH}/../profile-dmisu/.git"
-/usr/bin/env cat <<EOF >"${MY_PATH}/../profile-dmisu/.git/config"
+PROFILE_TMP="$(/usr/bin/env mktemp -d "/tmp/con-ima-XXXXX")"
+trap 'rm -rf "${PROFILE_TMP}"' HUP INT QUIT ABRT TERM EXIT
+/usr/bin/env git clone https://github.com/raven428/profile.git "${PROFILE_TMP}"
+/usr/bin/env cat <<EOF >"${PROFILE_TMP}/.git/config"
 [core]
   repositoryformatversion = 0
   filemode = true
@@ -30,6 +30,7 @@ source "${MY_PATH}/../vars.sh"
   email = raven428@gmail.com
 EOF
 TOTAL_RESULT=0
+REPO_ROOT="${MY_PATH}/../.."
 # shellcheck disable=2153
 for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
   TAG=${IMAGE_DIR//sources\//}
@@ -38,6 +39,10 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
   DEPENDS=''
   # shellcheck source=/dev/null
   source "${IMAGE_DIR}/vars.sh"
+  SHARED_DIR="${REPO_ROOT}/sources/${TAG}/_shared"
+  if [[ -d "${SHARED_DIR}" ]]; then
+    /usr/bin/env cp -r "${PROFILE_TMP}" "${SHARED_DIR}/profile-dmisu"
+  fi
   [[ -n "${DEPENDS}" ]] && {
     echo "found depends [${DEPENDS}] to build"
     MANUAL_IMAGES_DIRS="${DEPENDS}" ${MY_BIN}
