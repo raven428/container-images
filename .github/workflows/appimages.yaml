@@ -25,8 +25,9 @@ jobs:
         id: define-matrix
         run: |
           source _shared/_all/matrix.sh
-          FILTERED="$(echo "${DIR_SON}" | jq -Mc '[.[] | select(. |
-            test("^ansible-[0-9]{2}$") or . == "some-other-container")]')"
+          FILTERED="$(echo "${DIR_SON}" | jq -Mc '([.[] | select(. |
+            test("^ansible-[0-9]{2}$") or . == "some-other-container")] +
+            ["mkosi-26_0"]) | unique')"
           [[ "${FILTERED}" == "[]" ]] && FILTERED='["__skip__"]'
           echo "images=${FILTERED}" >> "${GITHUB_OUTPUT}"
       - name: create release
