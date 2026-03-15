@@ -5,6 +5,6 @@ ARG PYTHON_VERSION
 ENV PATH="/ansbl:$PATH"
 ENV PYENV_ROOT=${PYENV_ROOT}
 ENV PYTHON_VERSION=${PYTHON_VERSION}
-COPY podman.sh /files/podman.sh
-COPY files/install.sh /files/install.sh
+COPY files /files
+COPY _shared /files/shared
 RUN /files/install.sh

@@ -7,7 +7,7 @@ bin/python -m pip install -r /files/requirements.txt
 
 # Source common functions
 # shellcheck disable=SC1091
-source /files/common.sh
+source /files/shared/install/ansible/common.sh
 
 # Extract ansible version from TAG
 ANSIBLE_VERSION="${TAG#ansible-}"

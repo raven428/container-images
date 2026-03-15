@@ -11,11 +11,8 @@ trim_trailing_whitespace = true
 [*.go]
 indent_style = tab
 
-[.gitmodules]
-indent_style = tab
-
-[*.md]
-max_line_length = 1111
+[{*.md,*.crl,*.gpg,*.json}]
+max_line_length = unset
 
 [_shared/install/ansible/configure.sh]
 max_line_length = 222
@@ -30,5 +27,5 @@ max_line_length = 222
 indent_style = ''
 max_line_length = unset
 
-[_shared/install/ansible/build-appimage.sh]
+[{sources/texlive-myminimal/files/install.sh,_shared/install/ansible/build-appimage.sh}]
 max_line_length = 99

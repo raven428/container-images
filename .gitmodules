@@ -1,4 +1,0 @@
-[submodule "_shared/profile-dmisu"]
-	path = _shared/profile-dmisu
-	url = git@github.com:raven428/profile
-	branch = master
