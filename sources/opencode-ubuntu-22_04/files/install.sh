@@ -13,7 +13,7 @@ apt-get install -y --no-install-recommends \
   secure-delete moreutils less acl lz4 lzop lzma zstd unzip mtr patch ripgrep file \
   redis-tools mysqltuner mariadb-client postgresql-client nftables iptables \
   binutils bsdextrautils openssh-client fuse-overlayfs libcap2-bin squashfs-tools \
-  squashfuse
+  squashfuse debootstrap xfsprogs qemu-system-x86 qemu-utils expect
 apt-get upgrade -y
 cat >/etc/locale.gen <<'EOF'
 en_US.UTF-8 UTF-8
