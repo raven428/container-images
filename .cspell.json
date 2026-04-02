@@ -231,6 +231,7 @@
     "qvqv",
     "reformattting",
     "REGI",
+    "repart",
     "repositoryformatversion",
     "reptyr",
     "resolv",
@@ -348,10 +349,6 @@
     "networking-terms",
     "computing-acronyms"
   ],
-  "ignorePaths": [
-    "**/go.mod",
-    "**/go.sum",
-    "**/requirements.txt"
-  ],
+  "ignorePaths": ["**/go.mod", "**/go.sum", "**/requirements.txt"],
   "enabled": true
 }
