@@ -16,7 +16,7 @@ cffi==2.0.0
 charset-normalizer==3.4.2
 click-help-colors==0.9.4
 click==8.2.1
-cryptography==46.0.5
+cryptography==46.0.6
 distro==1.9.0
 docker==7.1.0
 enrich==1.2.7
@@ -44,12 +44,12 @@ pluggy==1.6.0
 podman==5.5.0
 psutil==7.0.0
 pycparser==2.22
-Pygments==2.19.2
+Pygments==2.20.0
 pytest==8.4.1
 python-dateutil==2.9.0.post0
 PyYAML==6.0.2
 referencing==0.36.2
-requests==2.32.4
+requests==2.33.0
 resolvelib==1.0.1
 rich==14.0.0
 rpds-py==0.26.0
