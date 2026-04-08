@@ -5,9 +5,7 @@ ENV BUILDAH_ISOLATION='chroot'
 ENV LANG='en_US.UTF-8'
 ENV LC_TIME='en_GB.UTF-8'
 ENV LANGUAGE='en_US.UTF-8'
-COPY files /files
 COPY _shared /files/shared
-RUN /files/install.sh
-RUN curl -sLo /usr/local/bin/opencode "https://github.com/raven428/opencode-ctrl/releases/download/v1.2.16p6/opencode-v1_2_16-linux-x64" && chmod -v 755 /usr/local/bin/opencode
+RUN /files/shared/coder/install.sh
 USER coder
 VOLUME ["/srv/data/podman/main", "/home/coder"]
