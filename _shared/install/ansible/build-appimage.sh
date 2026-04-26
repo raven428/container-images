@@ -107,6 +107,9 @@ export LD_LIBRARY_PATH="${HERE}/lib:${HERE}/lib64:${LD_LIBRARY_PATH:-}"
 export PATH="${HERE}/bin:${PATH}"
 export PYTHONHOME="${HERE}"
 export PYTHONPATH="${HERE}/lib/python"
+_SITE_PKG="$(echo "${HERE}"/lib/python*/site-packages)"
+export ANSIBLE_COLLECTIONS_PATH="${HOME}/.ansible/collections:\
+${_SITE_PKG}/ansible_collections"
 : "${ANSIBLE_USERDIR:="${HOME}/.ansible"}"
 /usr/bin/env mkdir -vp "${ANSIBLE_USERDIR}"/{ssh,tmp}
 /usr/bin/env cat >"${ANSIBLE_USERDIR}/ssh/config" <<SSHCONFIG
