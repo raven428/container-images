@@ -42,7 +42,7 @@ copy_system_libs() {
   for pkg in "${packages[@]}"; do
     # dpkg may not know about meta-packages or virtual ones — skip silently
     dpkg -L "${pkg}" 2>/dev/null || continue
-  done | grep -E '\.so(\.[0-9]+)*$' | while read -r src; do
+  done | grep -E '\.so(\.[0-9]+)*$' | grep -v '/liblzma\.so' | while read -r src; do
     [[ -e "${src}" || -L "${src}" ]] || continue
     dst="${lib_dir}/$(basename "${src}")"
     if [[ -L "${src}" ]]; then
