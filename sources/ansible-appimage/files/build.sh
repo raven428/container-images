@@ -15,7 +15,7 @@ eval "$(pyenv virtualenv-init -)"
 pyenv install "${PYTHON_VERSION}"
 # Download appimagetool
 APPIMAGE_BUILD_DIR='/usr/local/bin'
-echo "Downloading appimagetool..."
+echo "Downloading appimagetool…"
 mkdir -p "${APPIMAGE_BUILD_DIR}"
 cd "${APPIMAGE_BUILD_DIR}"
 ARCH="$(uname -m)"
