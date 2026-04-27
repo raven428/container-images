@@ -2,7 +2,7 @@
 
 cleanup_python_packages() {
   local python_root="$1"
-  echo "Cleaning up Python packages..."
+  echo "Cleaning up Python packages…"
   find "${python_root}" -depth \
     \( \
     \( -type d -a \( \
@@ -26,7 +26,7 @@ apply_flush_line_patch() {
     echo "Warning: flush-line.diff not found at ${patch_file}, skipping"
     return
   fi
-  echo "Applying flush-line.diff patch..."
+  echo "Applying flush-line.diff patch…"
   # shellcheck disable=2164
   cd "${python_root}"
   patch -p0 <"${patch_file}"
@@ -115,7 +115,7 @@ copy_system_files() {
     mapfile -t dep_arr <<<"$dep_str"
     all_pkgs+=("${dep_arr[@]}")
   fi
-  echo "Copying files from ${#all_pkgs[@]} packages (including deps)..."
+  echo "Copying files from ${#all_pkgs[@]} packages (including deps)…"
   for pkg in "${all_pkgs[@]}"; do
     [[ -z "$pkg" ]] && continue
     dpkg -l "$pkg" 2>/dev/null | grep -q '^ii' || continue
@@ -169,7 +169,7 @@ apply_async_check_patch() {
       echo "Warning: async-check.diff not found at ${patch_file}, skipping"
       return
     fi
-    echo "Applying async-check.diff patch for ansible-${ansible_version}..."
+    echo "Applying async-check.diff patch for ansible-${ansible_version}…"
     # shellcheck disable=2164
     cd "${python_root}"
     if [[ "${ansible_version}" == "06" ]]; then
