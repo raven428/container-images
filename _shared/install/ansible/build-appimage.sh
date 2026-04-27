@@ -22,16 +22,13 @@ export DEBIAN_FRONTEND=noninteractive
 echo "Installing runtime packages..."
 apt-get update -q
 read -ra _rt_pkgs <<<"$(python_runtime_packages)"
+_add_pkgs=()
 case "${TAG}" in
 mkosi-*)
-  read -ra _sys_pkgs <<<"$(mkosi_system_packages)"
-  apt-get install -y --no-install-recommends \
-    "${_rt_pkgs[@]}" "${_sys_pkgs[@]}"
-  ;;
-*)
-  apt-get install -y --no-install-recommends "${_rt_pkgs[@]}"
+  read -ra _add_pkgs <<<"$(mkosi_system_packages)"
   ;;
 esac
+apt-get install -y --no-install-recommends "${_rt_pkgs[@]}" "${_add_pkgs[@]}"
 rm -rf /var/lib/apt/lists/*
 APP_NAME="${TAG}-${IMAGE_VER}"
 APPDIR="${PYENV_ROOT}/versions/${PYTHON_VERSION}"
@@ -104,7 +101,7 @@ ansible-*)
   _DEFAULT_BIN='${HERE}/bin/python'
   cat >>AppRun <<'EOF'
 export LD_LIBRARY_PATH="${HERE}/lib:${HERE}/lib64:${LD_LIBRARY_PATH:-}"
-export PATH="${HERE}/bin:${PATH}"
+export PATH="${HERE}/bin:${HERE}/usr/bin:${PATH}"
 export PYTHONHOME="${HERE}"
 export PYTHONPATH="${HERE}/lib/python"
 _SITE_PKG="$(echo "${HERE}"/lib/python*/site-packages)"
