@@ -19,7 +19,7 @@ source /workspace/_shared/install/ansible/common.sh
 # Install runtime packages inside the running container so dpkg -L works.
 # This avoids rebuilding ansible-appimage when package list changes.
 export DEBIAN_FRONTEND=noninteractive
-echo "Installing runtime packages..."
+echo "Installing runtime packages…"
 apt-get update -q
 read -ra _rt_pkgs <<<"$(python_runtime_packages)"
 _add_pkgs=()
@@ -35,13 +35,13 @@ APPDIR="${PYENV_ROOT}/versions/${PYTHON_VERSION}"
 echo "Building AppImage for ${TAG} with Python ${PYTHON_VERSION}"
 cd "$APPDIR"
 # Create sitecustomize.py for portable shebangs
-echo "Creating sitecustomize.py..."
+echo "Creating sitecustomize.py…"
 SITE_PACKAGES_DIR="$(find lib -type d -name site-packages | head -n1)"
 cat >"${SITE_PACKAGES_DIR}/sitecustomize.py" <<'SITECUSTOMIZE_EOF'
 from pip._vendor.distlib.scripts import ScriptMaker
 ScriptMaker._build_shebang = lambda self, exe, post: b'#!/usr/bin/env python3' + post + b'\n'
 SITECUSTOMIZE_EOF
-echo "Upgrading pip, setuptools, wheel..."
+echo "Upgrading pip, setuptools, wheel…"
 bin/python -m pip install --upgrade --force-reinstall pip setuptools wheel
 case "${TAG}" in
 ansible-*)
@@ -50,11 +50,11 @@ ansible-*)
     echo "Error: requirements.txt not found at ${REQUIREMENTS}"
     exit 1
   fi
-  echo "Installing ansible packages from requirements.txt..."
+  echo "Installing ansible packages from requirements.txt…"
   bin/python -m pip install -r "${REQUIREMENTS}"
   ;;
 mkosi-*)
-  echo "Installing mkosi..."
+  echo "Installing mkosi…"
   bin/python -m pip install 'mkosi @ git+https://github.com/systemd/mkosi.git@v26'
   ;;
 *)
@@ -63,11 +63,11 @@ mkosi-*)
   ;;
 esac
 # Bundle Python runtime libraries
-echo "Bundling Python runtime libraries..."
+echo "Bundling Python runtime libraries…"
 read -ra _pkg_array <<<"$(python_runtime_packages)"
 copy_system_libs "$APPDIR" "${_pkg_array[@]}"
 PATCH_DIR="/workspace/_shared/install/ansible"
-echo "Creating AppRun..."
+echo "Creating AppRun…"
 cat >AppRun <<'APPRUN_HEADER'
 #!/usr/bin/env bash
 HERE="$(dirname "$(readlink -f "$0")")"
@@ -77,7 +77,7 @@ APPRUN_HEADER
 case "${TAG}" in
 mkosi-*)
   # Bundle system tool binaries, libs and data from mkosi dependencies
-  echo "Bundling system tools..."
+  echo "Bundling system tools…"
   read -ra _sys_arr <<<"$(mkosi_system_packages)"
   copy_system_files "$APPDIR" "${_sys_arr[@]}"
   # shellcheck disable=2016
@@ -142,7 +142,7 @@ fi
 exec "${_DEFAULT_BIN}" "\$@"
 EOF
 chmod +x AppRun
-echo "Creating desktop file..."
+echo "Creating desktop file…"
 cat >"${APP_NAME}.desktop" <<EOF
 [Desktop Entry]
 Type=Application
@@ -152,9 +152,9 @@ Icon=${APP_NAME}
 Categories=Development;
 Terminal=true
 EOF
-echo "Creating icon..."
+echo "Creating icon…"
 printf '\x89PNG\r\n\x1a\n' >"${APP_NAME}.png"
-echo "Building AppImage..."
+echo "Building AppImage…"
 "${APPIMAGETOOL}" "${APPDIR}" "${APP_NAME}.AppImage"
 mkdir -p /output
 cp "${APP_NAME}.AppImage" /output/

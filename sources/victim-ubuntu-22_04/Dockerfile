@@ -2,12 +2,16 @@
 FROM ubuntu:22.04
 LABEL org.opencontainers.image.source https://github.com/raven428/container-images
 ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && \
+
+RUN rm -f /etc/apt/sources.list.d/* && \
+  printf 'deb http://azure.archive.ubuntu.com/ubuntu jammy main restricted universe \
+  multiverse\ndeb http://azure.archive.ubuntu.com/ubuntu jammy-updates main restricted \
+  universe multiverse\ndeb http://azure.archive.ubuntu.com/ubuntu jammy-security main \
+  restricted universe multiverse\n' >/etc/apt/sources.list && apt-get update && \
   apt-get install -y --no-install-recommends apt-utils systemd python3 sudo bash less \
   ca-certificates iproute2 python3-apt aptitude python3-psutil xz-utils python3-zstd \
-  python3-lz4 secure-delete openssh-server && \
-  systemctl enable systemd-resolved systemd-networkd ssh && \
-  apt-get clean && \
+  python3-lz4 secure-delete openssh-server && systemctl enable systemd-resolved \
+  systemd-networkd ssh && apt-get clean && \
   rm -Rf /usr/share/doc /usr/share/man /var/lib/apt/lists/*
 
 # Remove unnecessary getty and udev targets that result in high CPU usage when using

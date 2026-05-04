@@ -18,7 +18,7 @@ apt-get update -q
 apt-get install -y --no-install-recommends fuse file curl
 rm -rf /var/lib/apt/lists/*
 if [[ ! -x "${APPIMAGETOOL}" ]]; then
-  echo "Downloading appimagetool ..."
+  echo "Downloading appimagetool…"
   curl -sLo "${APPIMAGETOOL}" "https://github.com/AppImage/appimagetool/releases/latest/\
 download/appimagetool-$(uname -m).AppImage"
   chmod +x "${APPIMAGETOOL}"
@@ -43,17 +43,17 @@ if [[ -z "${TL_BIN_ARCH}" ]]; then
 fi
 echo "Detected TeX Live bin arch: ${TL_BIN_ARCH}"
 # Copy entire /usr/local/texlive — packages, fonts, formats, binaries
-echo "Copying /usr/local/texlive (this may take a while) ..."
+echo "Copying /usr/local/texlive (this may take a while)…"
 mkdir -p "${APPDIR}/usr/local"
 cp -a /usr/local/texlive "${APPDIR}/usr/local/texlive"
 # Copy system fonts (e.g. fonts-freefont-otf installed in the container)
-echo "Copying system fonts ..."
+echo "Copying system fonts…"
 mkdir -p "${APPDIR}/usr/share/fonts"
 if [[ -d /usr/share/fonts ]]; then
   cp -a /usr/share/fonts/. "${APPDIR}/usr/share/fonts/"
 fi
 # Copy fontconfig configuration including 09-texlive-fonts.conf
-echo "Copying fontconfig config ..."
+echo "Copying fontconfig config…"
 mkdir -p "${APPDIR}/etc/fonts"
 if [[ -d /etc/fonts ]]; then
   cp -a /etc/fonts/. "${APPDIR}/etc/fonts/"
@@ -61,7 +61,7 @@ fi
 # fontconfig cache is generated at runtime by AppRun (per-user in ~/.cache/)
 # because fonts.conf paths depend on the squashfs mount point which varies.
 # Create .desktop file (required by appimagetool)
-echo "Creating desktop entry ..."
+echo "Creating desktop entry…"
 cat >"${APPDIR}/${APP_NAME}.desktop" <<EOF
 [Desktop Entry]
 Type=Application
@@ -73,7 +73,7 @@ Terminal=true
 EOF
 # Minimal 1x1 PNG icon placeholder
 printf '\x89PNG\r\n\x1a\n' >"${APPDIR}/${APP_NAME}.png"
-echo "Creating AppRun ..."
+echo "Creating AppRun…"
 # TL_YEAR and TL_BIN_ARCH are baked in at build time.
 cat >"${APPDIR}/AppRun" <<APPRUN_EOF
 #!/usr/bin/env bash
@@ -137,7 +137,7 @@ fi
 exec "\${TL_BIN}/xelatex" "\$@"
 APPRUN_EOF
 chmod +x "${APPDIR}/AppRun"
-echo "Building AppImage ..."
+echo "Building AppImage…"
 "${APPIMAGETOOL}" "${APPDIR}" "/tmp/${APP_NAME}.AppImage"
 mkdir -p /output
 cp "/tmp/${APP_NAME}.AppImage" /output/

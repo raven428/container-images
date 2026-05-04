@@ -4,7 +4,7 @@ set -euo pipefail
 # Usage: TAG=ansible-11 ./_shared/_all/appimage.sh
 #        TAG=texlive-myminimal ./_shared/_all/appimage.sh
 : "${TAG:?TAG environment variable must be set (e.g., ansible-11)}"
-echo "Building AppImage for ${TAG} in container..."
+echo "Building AppImage for ${TAG} in container…"
 if [[ -f "sources/${TAG}/vars.sh" ]]; then
   # shellcheck source=/dev/null
   source "sources/${TAG}/vars.sh"
