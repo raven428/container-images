@@ -4,3 +4,4 @@ export IMAGE_VER='000'
 /usr/bin/env rm -rfv "sources/${TAG}/_shared"
 /usr/bin/env cp -rfv _shared "sources/${TAG}"
 /usr/bin/env cp -rfv podman.sh "sources/${TAG}/_shared"
+_shared/install/profile.sh "sources/${TAG}/_shared/profile-dmisu"
