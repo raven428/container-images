@@ -16,7 +16,7 @@ trap_with_arg() {
 }
 cleanup() {
   /usr/bin/env rm -rf "${tmp_dir}"
-  trap - INT QUIT ABRT KILL TERM STOP
+  trap - INT QUIT ABRT TERM STOP
   if [[ "$1" != 'done' ]]; then
     return_code=1
   fi
@@ -56,7 +56,7 @@ deny_tabs() {
   shift
   /usr/bin/env sed -rzi 's/\t/ tabs denied /g' "${file}"
 }
-trap_with_arg cleanup INT QUIT ABRT KILL TERM STOP
+trap_with_arg cleanup INT QUIT ABRT TERM STOP
 
 # Parse ignore files if corresponding env vars are set
 exclude_args=()

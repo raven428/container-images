@@ -6,7 +6,7 @@ RUN rm -f /etc/apt/sources.list.d/* && \
   universe multiverse\ndeb http://azure.archive.ubuntu.com/ubuntu jammy-security main \
   restricted universe multiverse\n' >/etc/apt/sources.list
 COPY _shared /files
-RUN /files/install/docker/install.sh
+RUN /files/install/docker.sh
 
 VOLUME ["/sys/fs/cgroup", "/tmp", "/run"]
 CMD ["/lib/systemd/systemd"]

@@ -17,7 +17,7 @@ mkdir -p appimage-output
 case "${TAG}" in
 texlive-*)
   BUILD_IMAGE="${TARGET_REGISTRY}/${TAG}:latest"
-  BUILD_SCRIPT='texlive/build-appimage.sh'
+  BUILD_SCRIPT='texlive-appimage.sh'
   ;;
 *)
   BUILD_IMAGE="${TARGET_REGISTRY}/ansible-appimage:latest"

@@ -15,6 +15,8 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
   echo
   echo "building [${TAG}] from [${IMAGE_DIR}] dir…"
   DEPENDS=''
+  BUILD_CONTEXT_DIR="${IMAGE_DIR}"
+  PODMAN_EXTRA_ARGS=()
   # shellcheck source=/dev/null
   source "${IMAGE_DIR}/vars.sh"
   [[ -n "${DEPENDS}" ]] && {
@@ -36,7 +38,8 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
     -t "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}" \
     -t "${TARGET_REGISTRY}/${TAG}:${current_date}" \
     -t "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}-${current_date}" \
-    "${IMAGE_DIR}"
+    "${PODMAN_EXTRA_ARGS[@]+"${PODMAN_EXTRA_ARGS[@]}"}" \
+    "${BUILD_CONTEXT_DIR}"
   if [[ -n "${IMAGE_TEST:-}" ]]; then
     # shellcheck source=/dev/null
     source "${IMAGE_DIR}/${IMAGE_TEST}"

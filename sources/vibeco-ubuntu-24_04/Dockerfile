@@ -11,6 +11,6 @@ ENV LANG='en_US.UTF-8'
 ENV LC_TIME='en_GB.UTF-8'
 ENV LANGUAGE='en_US.UTF-8'
 COPY _shared /files/shared
-RUN /files/shared/coder/install.sh
+RUN /files/shared/install/coder.sh
 USER coder
 VOLUME ["/srv/data/podman/main", "/home/coder"]
