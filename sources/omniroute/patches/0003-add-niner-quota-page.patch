@@ -1,0 +1,1741 @@
+diff --git a/src/app/(dashboard)/dashboard/niner-quota/page.tsx b/src/app/(dashboard)/dashboard/niner-quota/page.tsx
+new file mode 100644
+index 00000000..32f0e9b2
+--- /dev/null
++++ b/src/app/(dashboard)/dashboard/niner-quota/page.tsx
+@@ -0,0 +1,11 @@
++import { Suspense } from "react";
++import { CardSkeleton } from "@/shared/components";
++import NinerQuotaDashboard from "../usage/components/NinerQuota";
++
++export default function NinerQuotaPage() {
++  return (
++    <Suspense fallback={<CardSkeleton />}>
++      <NinerQuotaDashboard />
++    </Suspense>
++  );
++}
+diff --git a/src/app/(dashboard)/dashboard/usage/components/NinerQuota/ProviderLimitCard.tsx b/src/app/(dashboard)/dashboard/usage/components/NinerQuota/ProviderLimitCard.tsx
+new file mode 100644
+index 00000000..26eaf073
+--- /dev/null
++++ b/src/app/(dashboard)/dashboard/usage/components/NinerQuota/ProviderLimitCard.tsx
+@@ -0,0 +1,172 @@
++"use client";
++
++import { useState } from "react";
++import Card from "@/shared/components/Card";
++import ProviderIcon from "@/shared/components/ProviderIcon";
++import Badge from "@/shared/components/Badge";
++import QuotaProgressBar from "./QuotaProgressBar";
++import { calculatePercentage } from "./utils";
++
++const planVariants = {
++  free: "default",
++  pro: "primary",
++  ultra: "success",
++  enterprise: "info",
++};
++
++export default function ProviderLimitCard({
++  provider,
++  name,
++  plan,
++  quotas = [],
++  message = null,
++  loading = false,
++  error = null,
++  onRefresh,
++}) {
++  const [refreshing, setRefreshing] = useState(false);
++
++  const handleRefresh = async () => {
++    if (!onRefresh || refreshing) return;
++
++    setRefreshing(true);
++    try {
++      await onRefresh();
++    } finally {
++      setRefreshing(false);
++    }
++  };
++
++  const getProviderColor = () => {
++    const colors = {
++      github: "#000000",
++      antigravity: "#4285F4",
++      codex: "#10A37F",
++      kiro: "#FF9900",
++      claude: "#D97757",
++    };
++    return colors[provider?.toLowerCase()] || "#6B7280";
++  };
++
++  const providerColor = getProviderColor();
++
++  return (
++    <Card padding="md" className="flex flex-col gap-4">
++      <div className="flex items-center justify-between">
++        <div className="flex items-center gap-3">
++          <div
++            className="size-10 rounded-lg flex items-center justify-center p-1.5"
++            style={{ backgroundColor: `${providerColor}15` }}
++          >
++            <ProviderIcon
++              providerId={provider}
++              size={40}
++              type="color"
++              className="object-contain rounded-lg"
++            />
++          </div>
++
++          <div>
++            <h3 className="font-semibold text-text-primary">
++              {name || provider}
++            </h3>
++            {plan && (
++              <Badge
++                variant={planVariants[plan?.toLowerCase()] || "default"}
++                size="xs"
++              >
++                {plan}
++              </Badge>
++            )}
++          </div>
++        </div>
++
++        <button
++          onClick={handleRefresh}
++          disabled={refreshing || loading}
++          className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
++          title="Refresh quota"
++        >
++          <span
++            className={`material-symbols-outlined text-[20px] text-text-muted ${
++              refreshing || loading ? "animate-spin" : ""
++            }`}
++          >
++            refresh
++          </span>
++        </button>
++      </div>
++
++      {loading && (
++        <div className="space-y-4">
++          <div className="space-y-2">
++            <div className="h-4 bg-black/5 dark:bg-white/5 rounded animate-pulse" />
++            <div className="h-2 bg-black/5 dark:bg-white/5 rounded animate-pulse" />
++          </div>
++          <div className="space-y-2">
++            <div className="h-4 bg-black/5 dark:bg-white/5 rounded animate-pulse" />
++            <div className="h-2 bg-black/5 dark:bg-white/5 rounded animate-pulse" />
++          </div>
++        </div>
++      )}
++
++      {!loading && error && (
++        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
++          <div className="flex items-start gap-2">
++            <span className="material-symbols-outlined text-red-500 text-[20px]">
++              error
++            </span>
++            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
++          </div>
++        </div>
++      )}
++
++      {!loading && !error && message && (
++        <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
++          <div className="flex items-start gap-2">
++            <span className="material-symbols-outlined text-blue-500 text-[20px]">
++              info
++            </span>
++            <p className="text-sm text-blue-600 dark:text-blue-400">
++              {message}
++            </p>
++          </div>
++        </div>
++      )}
++
++      {!loading && !error && !message && quotas?.length > 0 && (
++        <div className="space-y-4">
++          {quotas.map((quota, index) => {
++            const unlimited = !quota.total || quota.total <= 0;
++            const percentage = unlimited
++              ? 100
++              : quota.remainingPercentage !== undefined
++                ? Math.min(100, Math.max(0, Math.round(quota.remainingPercentage)))
++                : calculatePercentage(quota.used, quota.total);
++
++            return (
++              <QuotaProgressBar
++                key={`${quota.name}-${index}`}
++                label={quota.name}
++                used={quota.used}
++                total={quota.total}
++                percentage={percentage}
++                unlimited={unlimited}
++                resetTime={quota.resetAt}
++              />
++            );
++          })}
++        </div>
++      )}
++
++      {!loading && !error && !message && quotas?.length === 0 && (
++        <div className="text-center py-8 text-text-muted">
++          <span className="material-symbols-outlined text-[48px] opacity-20">
++            data_usage
++          </span>
++          <p className="text-sm mt-2">No quota data available</p>
++        </div>
++      )}
++    </Card>
++  );
++}
+diff --git a/src/app/(dashboard)/dashboard/usage/components/NinerQuota/QuotaProgressBar.tsx b/src/app/(dashboard)/dashboard/usage/components/NinerQuota/QuotaProgressBar.tsx
+new file mode 100644
+index 00000000..9ec957d6
+--- /dev/null
++++ b/src/app/(dashboard)/dashboard/usage/components/NinerQuota/QuotaProgressBar.tsx
+@@ -0,0 +1,115 @@
++"use client";
++
++import { cn } from "@/shared/utils/cn";
++import { formatResetTime } from "./utils";
++
++const getColorClasses = (remainingPercentage) => {
++  if (remainingPercentage > 70) {
++    return {
++      text: "text-green-500",
++      bg: "bg-green-500",
++      dot: "#22c55e"
++    };
++  }
++
++  if (remainingPercentage >= 30) {
++    return {
++      text: "text-yellow-500",
++      bg: "bg-yellow-500",
++      dot: "#eab308"
++    };
++  }
++
++  return {
++    text: "text-red-500",
++    bg: "bg-red-500",
++    dot: "#ef4444"
++  };
++};
++
++const formatResetTimeDisplay = (resetTime) => {
++  if (!resetTime) return null;
++
++  try {
++    const resetDate = new Date(resetTime);
++    const now = new Date();
++    const isToday = resetDate.toDateString() === now.toDateString();
++    const isTomorrow = resetDate.toDateString() === new Date(now.getTime() + 86400000).toDateString();
++
++    const timeStr = resetDate.toLocaleTimeString(undefined, {
++      hour: "2-digit",
++      minute: "2-digit",
++      hour12: true,
++    });
++
++    if (isToday) return `Today, ${timeStr}`;
++    if (isTomorrow) return `Tomorrow, ${timeStr}`;
++
++    return resetDate.toLocaleString(undefined, {
++      month: "short",
++      day: "numeric",
++      hour: "2-digit",
++      minute: "2-digit",
++      hour12: true,
++    });
++  } catch {
++    return null;
++  }
++};
++
++export default function QuotaProgressBar({
++  percentage = 0,
++  label = "",
++  used = 0,
++  total = 0,
++  unlimited = false,
++  resetTime = null
++}) {
++  const usedPct = 100 - percentage;
++  const colors = getColorClasses(percentage);
++  const countdown = formatResetTime(resetTime);
++  const resetDisplay = formatResetTimeDisplay(resetTime);
++
++  return (
++    <div className="space-y-2">
++      <div className="flex items-center justify-between text-sm">
++        <span className="font-semibold text-text-primary">
++          {label}
++        </span>
++        <div className="flex items-center gap-1.5">
++          <span className="text-xs" style={{ color: colors.dot, fontSize: '1.2em' }}>⬤</span>
++          <span className={cn("font-medium", colors.text)}>
++            {usedPct}%
++          </span>
++        </div>
++      </div>
++
++      {!unlimited && (
++        <div className="h-2 rounded-full overflow-hidden bg-black/5 dark:bg-white/5">
++          <div
++            className={cn("h-full transition-all duration-300", colors.bg)}
++            style={{ width: `${Math.min(usedPct, 100)}%` }}
++          />
++        </div>
++      )}
++
++      <div className="flex items-center justify-between text-xs text-text-muted">
++        <span>
++          {(used ?? 0).toLocaleString()} / {unlimited || !total || total <= 0 ? "∞" : total.toLocaleString()} requests
++        </span>
++        {countdown !== "-" && (
++          <div className="flex items-center gap-1">
++            <span>•</span>
++            <span className="font-medium">Reset in {countdown}</span>
++          </div>
++        )}
++      </div>
++
++      {resetDisplay && (
++        <div className="text-xs text-text-muted/70">
++          Reset at {resetDisplay}
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/src/app/(dashboard)/dashboard/usage/components/NinerQuota/QuotaTable.tsx b/src/app/(dashboard)/dashboard/usage/components/NinerQuota/QuotaTable.tsx
+new file mode 100644
+index 00000000..0338cd1f
+--- /dev/null
++++ b/src/app/(dashboard)/dashboard/usage/components/NinerQuota/QuotaTable.tsx
+@@ -0,0 +1,164 @@
++"use client";
++
++import { formatResetTime, calculatePercentage } from "./utils";
++
++function formatResetTimeDisplay(resetTime) {
++  if (!resetTime) return null;
++
++  try {
++    const date = new Date(resetTime);
++    const now = new Date();
++    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
++    const tomorrow = new Date(today);
++    tomorrow.setDate(tomorrow.getDate() + 1);
++
++    let dayStr = "";
++    if (date >= today && date < tomorrow) {
++      dayStr = "Today";
++    } else if (date >= tomorrow && date < new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000)) {
++      dayStr = "Tomorrow";
++    } else {
++      dayStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
++    }
++
++    const timeStr = date.toLocaleTimeString("en-US", {
++      hour: "numeric",
++      minute: "2-digit",
++      hour12: true
++    });
++
++    return `${dayStr}, ${timeStr}`;
++  } catch {
++    return null;
++  }
++}
++
++function getColorClasses(remainingPercentage) {
++  if (remainingPercentage > 70) {
++    return {
++      text: "text-green-600 dark:text-green-400",
++      bg: "bg-green-500",
++      bgLight: "bg-green-500/10",
++      dot: "#22c55e"
++    };
++  }
++
++  if (remainingPercentage >= 30) {
++    return {
++      text: "text-yellow-600 dark:text-yellow-400",
++      bg: "bg-yellow-500",
++      bgLight: "bg-yellow-500/10",
++      dot: "#eab308"
++    };
++  }
++
++  return {
++    text: "text-red-600 dark:text-red-400",
++    bg: "bg-red-500",
++    bgLight: "bg-red-500/10",
++    dot: "#ef4444"
++  };
++}
++
++export default function QuotaTable({ quotas = [], compact = false }) {
++  if (!quotas || quotas.length === 0) {
++    return null;
++  }
++
++  const cellPad = compact ? "py-1 px-1.5" : "py-2 px-3";
++  const nameText = compact ? "text-[11px]" : "text-sm";
++  const resetPrimary = compact ? "text-[11px]" : "text-sm";
++  const resetSecondary = compact ? "text-[10px] leading-tight" : "text-xs";
++
++  return (
++    <div className="overflow-x-auto">
++      <table className="w-full table-fixed text-left">
++        <tbody>
++          {quotas.map((quota, index) => {
++            const unlimited = !quota.total || quota.total <= 0;
++            const remainingPct = unlimited
++              ? 100
++              : quota.remainingPercentage !== undefined
++                ? Math.min(100, Math.max(0, Math.round(quota.remainingPercentage)))
++                : calculatePercentage(quota.used, quota.total);
++            const usedPct = unlimited ? 0 : 100 - remainingPct;
++
++            const colors = getColorClasses(remainingPct);
++            const countdown = formatResetTime(quota.resetAt);
++            const resetDisplay = formatResetTimeDisplay(quota.resetAt);
++
++            return (
++              <tr
++                key={index}
++                className="border-b border-black/5 dark:border-white/5 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
++              >
++                <td className={`${cellPad} w-[30%]`}>
++                  <div className="flex items-center gap-1.5 min-w-0">
++                    <span className="text-[10px] shrink-0" style={{ color: colors.dot, fontSize: '1.2em' }}>⬤</span>
++                    <span className={`${nameText} font-medium text-text-primary truncate`}>
++                      {quota.name}
++                    </span>
++                  </div>
++                </td>
++
++                <td className={`${cellPad} w-[45%]`}>
++                  <div className={compact ? "space-y-1" : "space-y-1.5"}>
++                    {!unlimited && (
++                      <div className={`${compact ? "h-1" : "h-1.5"} rounded-full overflow-hidden border bg-black/5 dark:bg-white/5 ${
++                        usedPct === 0 ? 'border-black/10 dark:border-white/10' : 'border-transparent'
++                      }`}>
++                        <div
++                          className={`h-full transition-all duration-300 ${colors.bg}`}
++                          style={{ width: `${Math.min(usedPct, 100)}%` }}
++                        />
++                      </div>
++                    )}
++
++                    <div className={`flex items-center justify-between ${compact ? "text-[10px]" : "text-xs"}`}>
++                      <span className="text-text-muted">
++                        {(quota.used ?? 0).toLocaleString()} / {unlimited ? "∞" : quota.total.toLocaleString()}
++                      </span>
++                      {!unlimited && (
++                        <span className={`font-medium ${colors.text}`}>
++                          {usedPct}%
++                        </span>
++                      )}
++                    </div>
++                  </div>
++                </td>
++
++                <td className={`${cellPad} w-[25%]`}>
++                  {countdown !== "-" || resetDisplay ? (
++                    compact ? (
++                      <div
++                        className={`${resetPrimary} text-text-primary font-medium truncate`}
++                        title={resetDisplay || ""}
++                      >
++                        {countdown !== "-" ? `in ${countdown}` : resetDisplay}
++                      </div>
++                    ) : (
++                      <div className="space-y-0.5">
++                        {countdown !== "-" && (
++                          <div className={`${resetPrimary} text-text-primary font-medium`}>
++                            in {countdown}
++                          </div>
++                        )}
++                        {resetDisplay && (
++                          <div className={`${resetSecondary} text-text-muted`}>
++                            {resetDisplay}
++                          </div>
++                        )}
++                      </div>
++                    )
++                  ) : (
++                    <div className={`${resetPrimary} text-text-muted italic`}>N/A</div>
++                  )}
++                </td>
++              </tr>
++            );
++          })}
++        </tbody>
++      </table>
++    </div>
++  );
++}
+diff --git a/src/app/(dashboard)/dashboard/usage/components/NinerQuota/index.tsx b/src/app/(dashboard)/dashboard/usage/components/NinerQuota/index.tsx
+new file mode 100644
+index 00000000..e4a8ff1d
+--- /dev/null
++++ b/src/app/(dashboard)/dashboard/usage/components/NinerQuota/index.tsx
+@@ -0,0 +1,504 @@
++"use client";
++
++import { useState, useEffect, useCallback, useRef } from "react";
++import ProviderIcon from "@/shared/components/ProviderIcon";
++import QuotaTable from "./QuotaTable";
++import Toggle from "@/shared/components/Toggle";
++import { parseQuotaData, calculatePercentage } from "./utils";
++import Card from "@/shared/components/Card";
++import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
++
++const APIKEY_QUOTA_PROVIDERS = [
++  "glm", "glm-cn", "minimax", "minimax-cn",
++];
++
++const isUsageEligible = (conn) =>
++  USAGE_SUPPORTED_PROVIDERS?.includes(conn.provider) &&
++  (conn.authType === "oauth" || APIKEY_QUOTA_PROVIDERS.includes(conn.provider));
++
++const REFRESH_INTERVAL_MS = 60000;
++const REFRESH_INTERVAL_S = REFRESH_INTERVAL_MS / 1000;
++const DEPLETED_QUOTA_THRESHOLD = 5;
++const AUTO_REFRESH_STORAGE_KEY = "ninerQuotaAutoRefresh";
++
++export default function NinerQuotaDashboard() {
++  const [connections, setConnections] = useState([]);
++  const [quotaData, setQuotaData] = useState({});
++  const [loading, setLoading] = useState({});
++  const [errors, setErrors] = useState({});
++  const [autoRefresh, setAutoRefresh] = useState(() => {
++    if (typeof window === "undefined") return true;
++    const stored = window.localStorage.getItem(AUTO_REFRESH_STORAGE_KEY);
++    return stored === null ? true : stored === "true";
++  });
++  const [refreshingAll, setRefreshingAll] = useState(false);
++  const refreshingAllRef = useRef(false);
++  const [countdown, setCountdown] = useState(REFRESH_INTERVAL_S);
++  const [connectionsLoading, setConnectionsLoading] = useState(true);
++  const [deletingId, setDeletingId] = useState(null);
++  const [togglingId, setTogglingId] = useState(null);
++  const [providerFilter, setProviderFilter] = useState("all");
++  const [expiringFirst, setExpiringFirst] = useState(false);
++  const [providerMenuOpen, setProviderMenuOpen] = useState(false);
++  const [bulkToggling, setBulkToggling] = useState(false);
++
++  const intervalRef = useRef(null);
++  const countdownRef = useRef(null);
++
++  const fetchConnections = useCallback(async () => {
++    try {
++      const response = await fetch("/api/providers/client");
++      if (!response.ok) throw new Error("Failed to fetch connections");
++
++      const data = await response.json();
++      const connectionList = data.connections || [];
++      setConnections(connectionList);
++      return connectionList;
++    } catch (error) {
++      console.error("Error fetching connections:", error);
++      setConnections([]);
++      return [];
++    }
++  }, []);
++
++  const fetchQuota = useCallback(async (connectionId, provider) => {
++    setLoading((prev) => ({ ...prev, [connectionId]: true }));
++    setErrors((prev) => ({ ...prev, [connectionId]: null }));
++
++    try {
++      const response = await fetch(`/api/usage/${connectionId}`);
++
++      if (!response.ok) {
++        const errorData = await response.json().catch(() => ({}));
++        const errorMsg = errorData.error || response.statusText;
++
++        if (response.status === 404) return;
++
++        if (response.status === 401) {
++          setQuotaData((prev) => ({
++            ...prev,
++            [connectionId]: { quotas: [], message: errorMsg },
++          }));
++          return;
++        }
++
++        throw new Error(`HTTP ${response.status}: ${errorMsg}`);
++      }
++
++      const data = await response.json();
++      const parsedQuotas = parseQuotaData(provider, data);
++
++      setQuotaData((prev) => ({
++        ...prev,
++        [connectionId]: {
++          quotas: parsedQuotas,
++          plan: data.plan || null,
++          message: data.message || null,
++          raw: data,
++        },
++      }));
++    } catch (error) {
++      console.error(`[NinerQuota] Error fetching quota:`, error);
++      setErrors((prev) => ({
++        ...prev,
++        [connectionId]: error.message || "Failed to fetch quota",
++      }));
++    } finally {
++      setLoading((prev) => ({ ...prev, [connectionId]: false }));
++    }
++  }, []);
++
++  const refreshProvider = useCallback(
++    async (connectionId, provider) => {
++      await fetchQuota(connectionId, provider);
++    },
++    [fetchQuota],
++  );
++
++  const handleDeleteConnection = useCallback(async (id) => {
++    if (!confirm("Delete this connection?")) return;
++    setDeletingId(id);
++    try {
++      const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
++      if (res.ok) {
++        setConnections((prev) => prev.filter((c) => c.id !== id));
++        setQuotaData((prev) => { const n = { ...prev }; delete n[id]; return n; });
++        setLoading((prev) => { const n = { ...prev }; delete n[id]; return n; });
++        setErrors((prev) => { const n = { ...prev }; delete n[id]; return n; });
++      }
++    } catch (error) {
++      console.error("Error deleting connection:", error);
++    } finally {
++      setDeletingId(null);
++    }
++  }, []);
++
++  const handleToggleConnectionActive = useCallback(async (id, isActive) => {
++    setTogglingId(id);
++    try {
++      const res = await fetch(`/api/providers/${id}`, {
++        method: "PUT",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ isActive }),
++      });
++      if (res.ok) {
++        setConnections((prev) =>
++          prev.map((c) => (c.id === id ? { ...c, isActive } : c)),
++        );
++      }
++    } catch (error) {
++      console.error("Error updating connection status:", error);
++    } finally {
++      setTogglingId(null);
++    }
++  }, []);
++
++  const applyCachedQuotaState = useCallback((connectionList, caches) => {
++    const nextQuotaData = {};
++    const nextErrors = {};
++
++    for (const conn of connectionList) {
++      const cached = caches?.[conn.id];
++      if (!cached) continue;
++
++      if (cached.error) {
++        nextErrors[conn.id] = cached.error;
++        continue;
++      }
++
++      nextQuotaData[conn.id] = {
++        quotas: parseQuotaData(conn.provider, cached),
++        plan: cached.plan || null,
++        message: cached.message || null,
++        raw: cached,
++      };
++    }
++
++    setQuotaData(nextQuotaData);
++    setErrors(nextErrors);
++  }, []);
++
++  const refreshAll = useCallback(async () => {
++    if (refreshingAllRef.current) return;
++    refreshingAllRef.current = true;
++    setRefreshingAll(true);
++    setCountdown(REFRESH_INTERVAL_S);
++    try {
++      const response = await fetch("/api/usage/provider-limits", { method: "POST" });
++      if (!response.ok) {
++        const errorData = await response.json().catch(() => ({}));
++        throw new Error(errorData.error || response.statusText);
++      }
++      const data = await response.json();
++      const connectionList = await fetchConnections();
++      applyCachedQuotaState(connectionList, data.caches || {});
++      setErrors(data.errors || {});
++    } catch (error) {
++      console.error("Error refreshing all:", error);
++    } finally {
++      refreshingAllRef.current = false;
++      setRefreshingAll(false);
++    }
++  }, [fetchConnections, applyCachedQuotaState]);
++
++  useEffect(() => {
++    const init = async () => {
++      setConnectionsLoading(true);
++      const [connectionList, caches] = await Promise.all([
++        fetchConnections(),
++        fetch("/api/usage/provider-limits")
++          .then((r) => (r.ok ? r.json() : {}))
++          .then((d) => d.caches || {})
++          .catch(() => ({})),
++      ]);
++      applyCachedQuotaState(connectionList, caches);
++      setConnectionsLoading(false);
++    };
++    init();
++  }, [fetchConnections, applyCachedQuotaState]);
++
++  useEffect(() => {
++    if (typeof window === "undefined") return;
++    window.localStorage.setItem(AUTO_REFRESH_STORAGE_KEY, String(autoRefresh));
++  }, [autoRefresh]);
++
++  useEffect(() => {
++    if (!autoRefresh) {
++      if (intervalRef.current) clearInterval(intervalRef.current);
++      if (countdownRef.current) clearInterval(countdownRef.current);
++      intervalRef.current = null;
++      countdownRef.current = null;
++      return;
++    }
++    intervalRef.current = setInterval(() => refreshAll(), REFRESH_INTERVAL_MS);
++    countdownRef.current = setInterval(() => {
++      setCountdown((p) => (p <= 1 ? REFRESH_INTERVAL_S : p - 1));
++    }, 1000);
++    return () => {
++      if (intervalRef.current) clearInterval(intervalRef.current);
++      if (countdownRef.current) clearInterval(countdownRef.current);
++    };
++  }, [autoRefresh, refreshAll]);
++
++  useEffect(() => {
++    const onVis = () => {
++      if (document.hidden) {
++        if (intervalRef.current) clearInterval(intervalRef.current);
++        if (countdownRef.current) clearInterval(countdownRef.current);
++        intervalRef.current = null;
++        countdownRef.current = null;
++      } else if (autoRefresh) {
++        intervalRef.current = setInterval(refreshAll, REFRESH_INTERVAL_MS);
++        countdownRef.current = setInterval(() => {
++          setCountdown((p) => (p <= 1 ? REFRESH_INTERVAL_S : p - 1));
++        }, 1000);
++      }
++    };
++    document.addEventListener("visibilitychange", onVis);
++    return () => document.removeEventListener("visibilitychange", onVis);
++  }, [autoRefresh, refreshAll]);
++
++  const filteredConnections = connections.filter(isUsageEligible);
++  const providerFiltered = filteredConnections.filter(
++    (c) => providerFilter === "all" || c.provider === providerFilter,
++  );
++
++  const getEarliestReset = (conn) => {
++    const ts = (quotaData[conn.id]?.quotas || [])
++      .map((q) => (q.resetAt ? new Date(q.resetAt).getTime() : Infinity))
++      .filter((t) => Number.isFinite(t));
++    return ts.length > 0 ? Math.min(...ts) : Infinity;
++  };
++
++  const sorted = [...providerFiltered].sort((a, b) => {
++    if (expiringFirst) {
++      const d = getEarliestReset(a) - getEarliestReset(b);
++      if (d !== 0) return d;
++    }
++    const oA = USAGE_SUPPORTED_PROVIDERS.indexOf(a.provider);
++    const oB = USAGE_SUPPORTED_PROVIDERS.indexOf(b.provider);
++    if (oA !== oB) return oA - oB;
++    return a.provider.localeCompare(b.provider);
++  });
++
++  const isDepleted = (conn) => {
++    const qs = quotaData[conn.id]?.quotas;
++    if (!qs?.length) return false;
++    return qs.some((q) => {
++      if (!q.total || q.total <= 0) return false;
++      return calculatePercentage(q.used, q.total) <= DEPLETED_QUOTA_THRESHOLD;
++    });
++  };
++
++  const bulkSetActive = useCallback(async (ids, active) => {
++    if (!ids.length || bulkToggling) return;
++    setBulkToggling(true);
++    try {
++      await Promise.all(
++        ids.map((id) =>
++          fetch(`/api/providers/${id}`, {
++            method: "PUT",
++            headers: { "Content-Type": "application/json" },
++            body: JSON.stringify({ isActive: active }),
++          }),
++        ),
++      );
++      setConnections((prev) =>
++        prev.map((c) => (ids.includes(c.id) ? { ...c, isActive: active } : c)),
++      );
++    } catch (e) {
++      console.error("Error bulk toggling:", e);
++    } finally {
++      setBulkToggling(false);
++    }
++  }, [bulkToggling]);
++
++  const handleDisableDepleted = () => {
++    bulkSetActive(
++      sorted.filter((c) => (c.isActive ?? true) && isDepleted(c)).map((c) => c.id),
++      false,
++    );
++  };
++
++  const handleEnableAvailable = () => {
++    bulkSetActive(
++      sorted.filter((c) => !(c.isActive ?? true) && !isDepleted(c)).map((c) => c.id),
++      true,
++    );
++  };
++
++  const providerOptions = Array.from(
++    new Set(filteredConnections.map((c) => c.provider)),
++  ).sort();
++  const selectedLabel = providerFilter === "all" ? "All providers" : providerFilter;
++
++  if (!connectionsLoading && sorted.length === 0) {
++    return (
++      <Card padding="lg">
++        <div className="text-center py-12">
++          <span className="material-symbols-outlined text-[64px] text-text-muted opacity-20">
++            cloud_off
++          </span>
++          <h3 className="mt-4 text-lg font-semibold text-text-primary">
++            No Providers Connected
++          </h3>
++          <p className="mt-2 text-sm text-text-muted max-w-md mx-auto">
++            Connect to providers with OAuth to track your API quota limits and usage.
++          </p>
++        </div>
++      </Card>
++    );
++  }
++
++  return (
++    <div className="space-y-6">
++      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
++        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
++          <h2 className="text-xl font-semibold text-text-primary">Provider Limits</h2>
++        </div>
++
++        <div className="flex flex-wrap items-center gap-1.5">
++          <div className="relative">
++            <button
++              type="button"
++              onClick={() => setProviderMenuOpen((p) => !p)}
++              className="flex h-8 items-center justify-between gap-1 rounded-lg border border-black/10 bg-black/[0.02] px-2 text-xs text-text-primary transition-colors hover:bg-black/5 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/10"
++              aria-haspopup="menu"
++              aria-expanded={providerMenuOpen}
++              title="Filter quota providers"
++            >
++              <span className="flex min-w-0 items-center gap-1.5">
++                {providerFilter === "all" ? (
++                  <span className="material-symbols-outlined text-[14px] text-text-muted">apps</span>
++                ) : (
++                  <ProviderIcon providerId={providerFilter} size={18} type="color" className="size-[18px] rounded object-contain" />
++                )}
++                <span className="truncate capitalize hidden lg:inline">{selectedLabel}</span>
++              </span>
++              <span className="material-symbols-outlined text-[14px] text-text-muted">expand_more</span>
++            </button>
++
++            {providerMenuOpen && (
++              <>
++                <div role="button" aria-label="Close provider filter menu" tabIndex={0} className="fixed inset-0 z-30" onClick={() => setProviderMenuOpen(false)} onKeyDown={(e) => e.key === "Escape" && setProviderMenuOpen(false)} />
++                <div className="absolute left-0 z-40 mt-2 w-64 overflow-hidden rounded-2xl border border-black/10 bg-surface/95 p-1.5 shadow-xl shadow-black/10 backdrop-blur dark:border-white/10 dark:bg-surface/95 sm:w-72">
++                  <button
++                    type="button"
++                    onClick={() => { setProviderFilter("all"); setProviderMenuOpen(false); }}
++                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${providerFilter === "all" ? "bg-primary/10 text-primary" : "text-text-primary hover:bg-black/5 dark:hover:bg-white/10"}`}
++                  >
++                    <span className="material-symbols-outlined text-[22px]">apps</span>
++                    <span className="font-medium">All providers</span>
++                    {providerFilter === "all" && <span className="material-symbols-outlined ml-auto text-[20px]">check</span>}
++                  </button>
++                  <div className="my-1 h-px bg-black/10 dark:bg-white/10" />
++                  <div className="max-h-72 overflow-y-auto pr-1">
++                    {providerOptions.map((p) => (
++                      <button
++                        key={p}
++                        type="button"
++                        onClick={() => { setProviderFilter(p); setProviderMenuOpen(false); }}
++                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${providerFilter === p ? "bg-primary/10 text-primary" : "text-text-primary hover:bg-black/5 dark:hover:bg-white/10"}`}
++                      >
++                        <ProviderIcon providerId={p} size={24} type="color" className="size-6 rounded-md object-contain" />
++                        <span className="font-medium capitalize">{p}</span>
++                        {providerFilter === p && <span className="material-symbols-outlined ml-auto text-[20px]">check</span>}
++                      </button>
++                    ))}
++                  </div>
++                </div>
++              </>
++            )}
++          </div>
++
++          <button type="button" onClick={() => setExpiringFirst((p) => !p)} className={`flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-xs transition-colors ${expiringFirst ? "border-amber-500/40 bg-amber-500/10 text-amber-500" : "border-black/10 text-text-primary hover:bg-black/5 dark:border-white/10"}`} title="Sort by earliest quota reset">
++            <span className="material-symbols-outlined text-[14px]">hourglass_top</span>
++            <span className="hidden sm:inline">Expiring first</span>
++          </button>
++
++          <button type="button" onClick={handleDisableDepleted} disabled={bulkToggling} className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-red-500/30 px-2 text-xs text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50" title="Disable depleted">
++            <span className="material-symbols-outlined text-[14px]">block</span>
++            <span className="hidden sm:inline">Turn off Empty</span>
++          </button>
++
++          <button type="button" onClick={handleEnableAvailable} disabled={bulkToggling} className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-emerald-500/30 px-2 text-xs text-emerald-500 transition-colors hover:bg-emerald-500/10 disabled:opacity-50" title="Enable with quota">
++            <span className="material-symbols-outlined text-[14px]">check_circle</span>
++            <span className="hidden sm:inline">Turn on Available</span>
++          </button>
++
++          <button onClick={() => setAutoRefresh((p) => !p)} className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-black/10 px-2 text-xs transition-colors hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5" title={autoRefresh ? "Disable auto-refresh" : "Enable auto-refresh"}>
++            <span className={`material-symbols-outlined text-[14px] ${autoRefresh ? "text-primary" : "text-text-muted"}`}>
++              {autoRefresh ? "toggle_on" : "toggle_off"}
++            </span>
++            <span className="hidden text-text-primary sm:inline">Auto-refresh</span>
++            {autoRefresh && <span className="text-[10px] text-text-muted tabular-nums">({countdown}s)</span>}
++          </button>
++
++          <button type="button" onClick={refreshAll} disabled={refreshingAll} className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-black/10 px-2 text-xs text-text-primary transition-colors hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5 disabled:opacity-50" title="Refresh all">
++            <span className={`material-symbols-outlined text-[14px] ${refreshingAll ? "animate-spin" : ""}`}>refresh</span>
++          </button>
++        </div>
++      </div>
++
++      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
++        {sorted.map((conn) => {
++          const quota = quotaData[conn.id];
++          const isLoading = loading[conn.id];
++          const error = errors[conn.id];
++          const isInactive = conn.isActive === false;
++          const busy = togglingId === conn.id;
++
++          return (
++            <Card key={conn.id} padding="none" className={`min-w-0 ${isInactive ? "opacity-60" : ""}`}>
++              <div className="px-3 py-2 border-b border-black/10 dark:border-white/10">
++                <div className="flex items-center justify-between gap-2">
++                  <div className="flex items-center gap-2 min-w-0">
++                    <div className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center overflow-hidden">
++                      <ProviderIcon providerId={conn.provider} size={32} type="color" className="object-contain" />
++                    </div>
++                    <div className="min-w-0">
++                      <h3 className="text-sm font-semibold text-text-primary capitalize truncate">{conn.provider}</h3>
++                      {(() => {
++                        const isEmail = (v) => typeof v === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
++                        const label = isEmail(conn.email) ? conn.email : (isEmail(conn.name) ? conn.name : conn.name);
++                        return label ? <p className="text-xs text-text-muted truncate">{label}</p> : null;
++                      })()}
++                    </div>
++                  </div>
++
++                  <div className="flex items-center gap-1 shrink-0">
++                    <button type="button" onClick={() => refreshProvider(conn.id, conn.provider)} disabled={isLoading || busy} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-50" title="Refresh quota">
++                      <span className={`material-symbols-outlined text-[18px] text-text-muted ${isLoading ? "animate-spin" : ""}`}>refresh</span>
++                    </button>
++                    <div className="inline-flex items-center pl-0.5" title={(conn.isActive ?? true) ? "Disable connection" : "Enable connection"}>
++                      <Toggle size="sm" checked={conn.isActive ?? true} disabled={busy} onChange={(v) => handleToggleConnectionActive(conn.id, v)} />
++                    </div>
++                  </div>
++                </div>
++              </div>
++
++              <div className="px-2 py-1.5">
++                {isLoading ? (
++                  <div className="text-center py-5 text-text-muted">
++                    <span className="material-symbols-outlined text-[28px] animate-spin">progress_activity</span>
++                  </div>
++                ) : error ? (
++                  <div className="text-center py-5">
++                    <span className="material-symbols-outlined text-[28px] text-red-500">error</span>
++                    <p className="mt-1.5 text-xs text-text-muted">{error}</p>
++                  </div>
++                ) : quota?.message ? (
++                  <div className="text-center py-5">
++                    <p className="text-xs text-text-muted">{quota.message}</p>
++                  </div>
++                ) : (
++                  <QuotaTable quotas={quota?.quotas} compact />
++                )}
++              </div>
++            </Card>
++          );
++        })}
++      </div>
++    </div>
++  );
++}
+diff --git a/src/app/(dashboard)/dashboard/usage/components/NinerQuota/utils.tsx b/src/app/(dashboard)/dashboard/usage/components/NinerQuota/utils.tsx
+new file mode 100644
+index 00000000..c45c99b1
+--- /dev/null
++++ b/src/app/(dashboard)/dashboard/usage/components/NinerQuota/utils.tsx
+@@ -0,0 +1,167 @@
++import { getModelsByProviderId } from "@omniroute/open-sse/config/providerModels";
++
++export function formatResetTime(date) {
++  if (!date) return "-";
++
++  try {
++    const resetDate = typeof date === "string" ? new Date(date) : date;
++    const now = new Date();
++    const diffMs = resetDate - now;
++
++    if (diffMs <= 0) return "-";
++
++    const totalMinutes = Math.ceil(diffMs / (1000 * 60));
++
++    if (totalMinutes < 60) {
++      return `${totalMinutes}m`;
++    }
++
++    const totalHours = Math.floor(totalMinutes / 60);
++    const remainingMinutes = totalMinutes % 60;
++
++    if (totalHours < 24) {
++      return `${totalHours}h ${remainingMinutes}m`;
++    }
++
++    const days = Math.floor(totalHours / 24);
++    const remainingHours = totalHours % 24;
++    return `${days}d ${remainingHours}h ${remainingMinutes}m`;
++  } catch (error) {
++    return "-";
++  }
++}
++
++export function getStatusColor(percentage) {
++  if (percentage > 70) return "green";
++  if (percentage >= 30) return "yellow";
++  return "red";
++}
++
++export function getStatusEmoji(percentage) {
++  if (percentage > 70) return "🟢";
++  if (percentage >= 30) return "🟡";
++  return "🔴";
++}
++
++export function calculatePercentage(used, total) {
++  if (!total || total === 0) return 0;
++  if (!used || used < 0) return 100;
++  if (used >= total) return 0;
++
++  return Math.round(((total - used) / total) * 100);
++}
++
++export function parseQuotaData(provider, data) {
++  if (!data || typeof data !== "object") return [];
++
++  const normalizedQuotas = [];
++
++  try {
++    switch (provider.toLowerCase()) {
++      case "github":
++        if (data.quotas) {
++          Object.entries(data.quotas).forEach(([name, quota]) => {
++            normalizedQuotas.push({
++              name,
++              used: quota.used || 0,
++              total: quota.total || 0,
++              resetAt: quota.resetAt || null,
++            });
++          });
++        }
++        break;
++
++      case "antigravity":
++        if (data.quotas) {
++          Object.entries(data.quotas).forEach(([modelKey, quota]) => {
++            normalizedQuotas.push({
++              name: quota.displayName || modelKey,
++              modelKey: modelKey,
++              used: quota.used || 0,
++              total: quota.total || 0,
++              resetAt: quota.resetAt || null,
++              remainingPercentage: quota.remainingPercentage,
++            });
++          });
++        }
++        break;
++
++      case "codex":
++        if (data.quotas) {
++          Object.entries(data.quotas).forEach(([quotaType, quota]) => {
++            normalizedQuotas.push({
++              name: quotaType,
++              used: quota.used || 0,
++              total: quota.total || 0,
++              resetAt: quota.resetAt || null,
++            });
++          });
++        }
++        break;
++
++      case "kiro":
++        if (data.quotas) {
++          Object.entries(data.quotas).forEach(([quotaType, quota]) => {
++            normalizedQuotas.push({
++              name: quotaType,
++              used: quota.used || 0,
++              total: quota.total || 0,
++              resetAt: quota.resetAt || null,
++            });
++          });
++        }
++        break;
++
++      case "claude":
++        if (data.message) {
++          normalizedQuotas.push({
++            name: "error",
++            used: 0,
++            total: 0,
++            resetAt: null,
++            message: data.message,
++          });
++        } else if (data.quotas) {
++          Object.entries(data.quotas).forEach(([name, quota]) => {
++            normalizedQuotas.push({
++              name,
++              used: quota.used || 0,
++              total: quota.total || 0,
++              resetAt: quota.resetAt || null,
++            });
++          });
++        }
++        break;
++
++      default:
++        if (data.quotas) {
++          Object.entries(data.quotas).forEach(([name, quota]) => {
++            normalizedQuotas.push({
++              name,
++              used: quota.used || 0,
++              total: quota.total || 0,
++              resetAt: quota.resetAt || null,
++            });
++          });
++        }
++    }
++  } catch (error) {
++    console.error(`Error parsing quota data for ${provider}:`, error);
++    return [];
++  }
++
++  const modelOrder = getModelsByProviderId(provider);
++  if (modelOrder.length > 0) {
++    const orderMap = new Map(modelOrder.map((m, i) => [m.id, i]));
++
++    normalizedQuotas.sort((a, b) => {
++      const keyA = a.modelKey || a.name;
++      const keyB = b.modelKey || b.name;
++      const orderA = orderMap.get(keyA) ?? 999;
++      const orderB = orderMap.get(keyB) ?? 999;
++      return orderA - orderB;
++    });
++  }
++
++  return normalizedQuotas;
++}
+diff --git a/src/i18n/messages/ar.json b/src/i18n/messages/ar.json
+index ce2ef3d7..b8d8a865 100644
+--- a/src/i18n/messages/ar.json
++++ b/src/i18n/messages/ar.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/az.json b/src/i18n/messages/az.json
+index 8ddc8d67..dc70cf80 100644
+--- a/src/i18n/messages/az.json
++++ b/src/i18n/messages/az.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/bg.json b/src/i18n/messages/bg.json
+index b232e363..605a81d9 100644
+--- a/src/i18n/messages/bg.json
++++ b/src/i18n/messages/bg.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/bn.json b/src/i18n/messages/bn.json
+index 27782d5a..abd36394 100644
+--- a/src/i18n/messages/bn.json
++++ b/src/i18n/messages/bn.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/cs.json b/src/i18n/messages/cs.json
+index 9f32a8a7..7929f597 100644
+--- a/src/i18n/messages/cs.json
++++ b/src/i18n/messages/cs.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/da.json b/src/i18n/messages/da.json
+index 661666ec..348048c7 100644
+--- a/src/i18n/messages/da.json
++++ b/src/i18n/messages/da.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/de.json b/src/i18n/messages/de.json
+index 2db0c2f1..a2ec44cc 100644
+--- a/src/i18n/messages/de.json
++++ b/src/i18n/messages/de.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/en.json b/src/i18n/messages/en.json
+index 83217c62..0432030d 100644
+--- a/src/i18n/messages/en.json
++++ b/src/i18n/messages/en.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/es.json b/src/i18n/messages/es.json
+index b7097c3e..212d4060 100644
+--- a/src/i18n/messages/es.json
++++ b/src/i18n/messages/es.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/fa.json b/src/i18n/messages/fa.json
+index ac33a719..07bffd1f 100644
+--- a/src/i18n/messages/fa.json
++++ b/src/i18n/messages/fa.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/fi.json b/src/i18n/messages/fi.json
+index 8e81b81e..b0aae19e 100644
+--- a/src/i18n/messages/fi.json
++++ b/src/i18n/messages/fi.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/fr.json b/src/i18n/messages/fr.json
+index 42f00282..9f3e66f6 100644
+--- a/src/i18n/messages/fr.json
++++ b/src/i18n/messages/fr.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/gu.json b/src/i18n/messages/gu.json
+index 6620c56b..896fb28e 100644
+--- a/src/i18n/messages/gu.json
++++ b/src/i18n/messages/gu.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/he.json b/src/i18n/messages/he.json
+index b6a6612e..b1e50321 100644
+--- a/src/i18n/messages/he.json
++++ b/src/i18n/messages/he.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/hi.json b/src/i18n/messages/hi.json
+index adff1b4e..9ab70ab0 100644
+--- a/src/i18n/messages/hi.json
++++ b/src/i18n/messages/hi.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/hu.json b/src/i18n/messages/hu.json
+index 7064c4dc..dc80fb93 100644
+--- a/src/i18n/messages/hu.json
++++ b/src/i18n/messages/hu.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/id.json b/src/i18n/messages/id.json
+index fa0b2932..22c88daf 100644
+--- a/src/i18n/messages/id.json
++++ b/src/i18n/messages/id.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/in.json b/src/i18n/messages/in.json
+index 09f76419..e8b6e513 100644
+--- a/src/i18n/messages/in.json
++++ b/src/i18n/messages/in.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/it.json b/src/i18n/messages/it.json
+index 45a3a581..69e12659 100644
+--- a/src/i18n/messages/it.json
++++ b/src/i18n/messages/it.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/ja.json b/src/i18n/messages/ja.json
+index 6d934dfc..6d3b417c 100644
+--- a/src/i18n/messages/ja.json
++++ b/src/i18n/messages/ja.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/ko.json b/src/i18n/messages/ko.json
+index c730f4dc..1cbacd48 100644
+--- a/src/i18n/messages/ko.json
++++ b/src/i18n/messages/ko.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/mr.json b/src/i18n/messages/mr.json
+index 23f3841c..19e4d36b 100644
+--- a/src/i18n/messages/mr.json
++++ b/src/i18n/messages/mr.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/ms.json b/src/i18n/messages/ms.json
+index 1ec8c3da..ed3d73d1 100644
+--- a/src/i18n/messages/ms.json
++++ b/src/i18n/messages/ms.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/nl.json b/src/i18n/messages/nl.json
+index 6e29c408..c52e3f7f 100644
+--- a/src/i18n/messages/nl.json
++++ b/src/i18n/messages/nl.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/no.json b/src/i18n/messages/no.json
+index 1ebc1754..936f9522 100644
+--- a/src/i18n/messages/no.json
++++ b/src/i18n/messages/no.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/phi.json b/src/i18n/messages/phi.json
+index 671e3815..985eb9ff 100644
+--- a/src/i18n/messages/phi.json
++++ b/src/i18n/messages/phi.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/pl.json b/src/i18n/messages/pl.json
+index 4c8e58c2..581ce9a9 100644
+--- a/src/i18n/messages/pl.json
++++ b/src/i18n/messages/pl.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/pt-BR.json b/src/i18n/messages/pt-BR.json
+index baaa004d..c11faec8 100644
+--- a/src/i18n/messages/pt-BR.json
++++ b/src/i18n/messages/pt-BR.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Gerenciar provedores de IA",
+     "quotaTrackerSubtitle": "Acompanhar limites de uso",
+     "providerQuotaSubtitle": "Acompanhar limites de uso por provedor",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Resiliência e sessões em tempo real",
+     "contextCombosSubtitle": "Combinar engines de compressão",
+     "cliToolsSubtitle": "Configurar runtimes CLI",
+diff --git a/src/i18n/messages/pt.json b/src/i18n/messages/pt.json
+index 43ae09c0..51865b49 100644
+--- a/src/i18n/messages/pt.json
++++ b/src/i18n/messages/pt.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Gerenciar provedores de IA",
+     "quotaTrackerSubtitle": "Acompanhar limites de uso",
+     "providerQuotaSubtitle": "__MISSING__:Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "__MISSING__:Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combinar engines de compressão",
+     "cliToolsSubtitle": "Configurar runtimes CLI",
+diff --git a/src/i18n/messages/ro.json b/src/i18n/messages/ro.json
+index f184bb57..39b7abf8 100644
+--- a/src/i18n/messages/ro.json
++++ b/src/i18n/messages/ro.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/ru.json b/src/i18n/messages/ru.json
+index f88e1e34..d52bd69e 100644
+--- a/src/i18n/messages/ru.json
++++ b/src/i18n/messages/ru.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/sk.json b/src/i18n/messages/sk.json
+index a58e1730..8090d895 100644
+--- a/src/i18n/messages/sk.json
++++ b/src/i18n/messages/sk.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/sv.json b/src/i18n/messages/sv.json
+index cd4a46bc..9e643d2e 100644
+--- a/src/i18n/messages/sv.json
++++ b/src/i18n/messages/sv.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/sw.json b/src/i18n/messages/sw.json
+index 09f76419..e8b6e513 100644
+--- a/src/i18n/messages/sw.json
++++ b/src/i18n/messages/sw.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/ta.json b/src/i18n/messages/ta.json
+index 1f46c9e1..918c34b0 100644
+--- a/src/i18n/messages/ta.json
++++ b/src/i18n/messages/ta.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/te.json b/src/i18n/messages/te.json
+index 5a6c9fab..1441264c 100644
+--- a/src/i18n/messages/te.json
++++ b/src/i18n/messages/te.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/th.json b/src/i18n/messages/th.json
+index 0ef05b22..9c48df8c 100644
+--- a/src/i18n/messages/th.json
++++ b/src/i18n/messages/th.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/tr.json b/src/i18n/messages/tr.json
+index 630aa723..3973a8dd 100644
+--- a/src/i18n/messages/tr.json
++++ b/src/i18n/messages/tr.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/uk-UA.json b/src/i18n/messages/uk-UA.json
+index 52cf95bc..2b42b7cb 100644
+--- a/src/i18n/messages/uk-UA.json
++++ b/src/i18n/messages/uk-UA.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/ur.json b/src/i18n/messages/ur.json
+index 21922361..4389643b 100644
+--- a/src/i18n/messages/ur.json
++++ b/src/i18n/messages/ur.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/vi.json b/src/i18n/messages/vi.json
+index 95406cc0..16c74755 100644
+--- a/src/i18n/messages/vi.json
++++ b/src/i18n/messages/vi.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/i18n/messages/zh-CN.json b/src/i18n/messages/zh-CN.json
+index 17e19ec1..446bfa5c 100644
+--- a/src/i18n/messages/zh-CN.json
++++ b/src/i18n/messages/zh-CN.json
+@@ -866,6 +866,8 @@
+     "providersSubtitle": "Manage AI providers",
+     "quotaTrackerSubtitle": "Track usage limits",
+     "providerQuotaSubtitle": "Track provider usage limits",
++    "ninerQuota": "Niner Quota",
++    "ninerQuotaSubtitle": "9router-style quota tracker",
+     "runtimeSubtitle": "Realtime resilience & sessions",
+     "contextCombosSubtitle": "Combine compression engines",
+     "cliToolsSubtitle": "Configure CLI runtimes",
+diff --git a/src/shared/constants/sidebarVisibility.ts b/src/shared/constants/sidebarVisibility.ts
+index 2e42dfd4..54c841a5 100644
+--- a/src/shared/constants/sidebarVisibility.ts
++++ b/src/shared/constants/sidebarVisibility.ts
+@@ -7,6 +7,7 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
+   "providers",
+   "combos",
+   "quota",
++  "niner-quota",
+   // OmniProxy > Compression Context
+   "context-caveman",
+   "context-rtk",
+@@ -181,6 +182,13 @@ const OMNI_PROXY_ITEMS: readonly SidebarItemDefinition[] = [
+     subtitleKey: "providerQuotaSubtitle",
+     icon: "tune",
+   },
++  {
++    id: "niner-quota",
++    href: "/dashboard/niner-quota",
++    i18nKey: "ninerQuota",
++    subtitleKey: "ninerQuotaSubtitle",
++    icon: "data_usage",
++  },
+ ];
+ 
+ const COMPRESSION_CONTEXT_GROUP: SidebarItemGroup = {

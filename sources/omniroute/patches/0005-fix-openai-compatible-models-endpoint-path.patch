@@ -1,0 +1,53 @@
+diff --git a/src/app/(dashboard)/dashboard/providers/[id]/page.tsx b/src/app/(dashboard)/dashboard/providers/[id]/page.tsx
+index c6f47a0b..b121641c 100644
+--- a/src/app/(dashboard)/dashboard/providers/[id]/page.tsx
++++ b/src/app/(dashboard)/dashboard/providers/[id]/page.tsx
+@@ -5890,6 +5890,9 @@ function CompatibleModelsSection({
+               compatDisabled={compatSavingModelId === modelId}
+               onToggleHidden={onToggleHidden}
+               togglingHidden={togglingModelId === modelId}
++              onTestModel={onTestModel}
++              testStatus={modelTestStatus?.[modelId] ?? null}
++              testingModel={testingModelId === modelId}
+             />
+           ))}
+           {filteredModels.length === 0 && modelFilter && (
+diff --git a/src/app/api/providers/[id]/models/route.ts b/src/app/api/providers/[id]/models/route.ts
+index 7897c4db..cde3264a 100755
+--- a/src/app/api/providers/[id]/models/route.ts
++++ b/src/app/api/providers/[id]/models/route.ts
+@@ -1029,7 +1029,13 @@ export async function GET(
+       }
+
+       // T39: Try multiple endpoint formats
++      // If provider has explicit modelsPath configured, prefer it first
++      const psd = asRecord(connection.providerSpecificData);
++      const configuredModelsPath = toNonEmptyString(psd.modelsPath);
+       const endpoints = [
++        ...(configuredModelsPath
++          ? [`${base}${configuredModelsPath}`]
++          : []),
+         `${base}/v1/models`,
+         `${base}/models`,
+         `${baseUrl.replace(/\/$/, "")}/models`, // Original fallback
+diff --git a/src/lib/providers/validation.ts b/src/lib/providers/validation.ts
+index 107775e1..9599d80e 100644
+--- a/src/lib/providers/validation.ts
++++ b/src/lib/providers/validation.ts
+@@ -2070,10 +2070,14 @@ async function validateOpenAICompatibleProvider({ apiKey, providerSpecificData =
+       ? providerSpecificData.validationModelId.trim()
+       : "";
+
+-  // Step 1: Try GET /models
++  // Step 1: Try GET /models (use configured modelsPath if available)
++  const modelsPath =
++    typeof providerSpecificData?.modelsPath === "string" && providerSpecificData.modelsPath.trim()
++      ? providerSpecificData.modelsPath.trim()
++      : "/models";
+   let modelsReachable = false;
+   try {
+-    const modelsRes = await validationRead(`${baseUrl}/models`, {
++    const modelsRes = await validationRead(`${baseUrl}${modelsPath}`, {
+       method: "GET",
+       headers: buildBearerHeaders(apiKey, providerSpecificData),
+     });
