@@ -1,0 +1,34 @@
+diff --git a/api/server/index.js b/api/server/index.js
+index d26a203c0..14e1a0058 100644
+--- a/api/server/index.js
++++ b/api/server/index.js
+@@ -221,6 +221,7 @@ const startServer = async () => {
+     } else {
+       logger.info(`Server listening at http://${host == '0.0.0.0' ? 'localhost' : host}:${port}`);
+     }
++    logger.info('backend patch 001');
+ 
+     await runAsSystem(async () => {
+       await initializeMCPs();
+diff --git a/packages/data-provider/src/request.ts b/packages/data-provider/src/request.ts
+index 5021b150e..22ebcc7ef 100644
+--- a/packages/data-provider/src/request.ts
++++ b/packages/data-provider/src/request.ts
+@@ -99,12 +99,11 @@ if (typeof window !== 'undefined') {
+         return Promise.reject(error);
+       }
+ 
+-      /** Skip refresh when the Authorization header has been cleared (e.g. during logout),
+-       *  but allow shared link requests to proceed so auth recovery/redirect can happen */
+-      if (
+-        !axios.defaults.headers.common['Authorization'] &&
+-        !window.location.pathname.startsWith('/share/')
+-      ) {
++      /** Skip refresh when the Authorization header has been cleared (e.g. during logout).
++       *  This also covers unauthenticated share pages, preventing a spurious login redirect
++       *  caused by authenticated-only endpoints (e.g. /api/mcp/servers) being called by
++       *  components rendered on public share pages. */
++      if (!axios.defaults.headers.common['Authorization']) {
+         return Promise.reject(error);
+       }
+ 
