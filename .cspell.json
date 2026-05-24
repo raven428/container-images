@@ -101,6 +101,7 @@
     "grpcurl",
     "gsub",
     "haspopup",
+    "HIDEABLE",
     "histappend",
     "hyperref",
     "idna",
@@ -363,6 +364,6 @@
     "networking-terms",
     "computing-acronyms"
   ],
-  "ignorePaths": ["**/go.mod", "**/go.sum", "**/requirements.txt"],
+  "ignorePaths": ["**/go.mod", "**/go.sum", "**/requirements.txt", "sources/*/patches"],
   "enabled": true
 }
