@@ -1,0 +1,361 @@
+diff --git a/open-sse/handlers/chatCore.ts b/open-sse/handlers/chatCore.ts
+index 74a059e2..0d44653c 100644
+--- a/open-sse/handlers/chatCore.ts
++++ b/open-sse/handlers/chatCore.ts
+@@ -207,6 +207,100 @@ import {
+ 
+ const MEMORY_EXTRACTION_TEXT_LIMIT = 64 * 1024;
+ 
++console.log('[OMNIROUTE_PATCHED] v3.8.1-mcp-stream-fix — patches applied successfully');
++
++async function peekResponsesApiStream(
++  providerResponse: Response
++): Promise<Response | null> {
++  const body = providerResponse.body;
++  if (!body) return null;
++
++  const decoder = new TextDecoder();
++  const bufferedChunks: Uint8Array[] = [];
++  let textBuffer = "";
++  let hasContent = false;
++
++  const reader = body.getReader();
++
++  try {
++    outer: while (true) {
++      const { done, value } = await reader.read();
++      if (done) break;
++
++      bufferedChunks.push(value);
++      textBuffer += decoder.decode(value, { stream: true });
++
++      const lines = textBuffer.split("\n");
++      textBuffer = lines.pop() ?? "";
++
++      for (const line of lines) {
++        const trimmed = line.trimStart();
++        if (!trimmed.startsWith("data:")) continue;
++        const raw = trimmed.slice(5).trim();
++        if (!raw || raw === "[DONE]") continue;
++
++        let parsed: Record<string, unknown>;
++        try {
++          parsed = JSON.parse(raw);
++        } catch {
++          continue;
++        }
++
++        const eventType = parsed.type as string | undefined;
++        if (!eventType) continue;
++
++        if (
++          eventType === "response.output_text.delta" ||
++          eventType === "response.output_item.added" ||
++          eventType === "response.reasoning_content_text.delta" ||
++          eventType === "response.reasoning_summary_text.delta" ||
++          eventType === "response.reasoning_text.delta" ||
++          eventType === "response.function_call_arguments.delta"
++        ) {
++          hasContent = true;
++          break outer;
++        }
++
++        if (eventType === "response.completed" || eventType === "response.failed") {
++          break outer;
++        }
++      }
++    }
++  } catch {
++    try { reader.releaseLock(); } catch { /* ignore */ }
++    return null;
++  }
++
++  if (!hasContent) {
++    try { reader.releaseLock(); } catch { /* ignore */ }
++    return null;
++  }
++
++  const reconstructed = new ReadableStream<Uint8Array>({
++    async start(controller) {
++      for (const chunk of bufferedChunks) {
++        controller.enqueue(chunk);
++      }
++      try {
++        while (true) {
++          const { done, value } = await reader.read();
++          if (done) break;
++          controller.enqueue(value);
++        }
++      } finally {
++        controller.close();
++      }
++    },
++    cancel() { reader.cancel().catch(() => {}); },
++  });
++
++  return new Response(reconstructed, {
++    status: providerResponse.status,
++    statusText: providerResponse.statusText,
++    headers: providerResponse.headers,
++  });
++}
++
+ function capMemoryExtractionText(value: string): string {
+   if (value.length <= MEMORY_EXTRACTION_TEXT_LIMIT) return value;
+   return value.slice(-MEMORY_EXTRACTION_TEXT_LIMIT);
+@@ -4814,6 +4908,39 @@ export async function handleChatCore({
+   const streamStateBody = finalBody || body;
+ 
+   if (needsResponsesTranslation) {
++    // Detect empty responses BEFORE committing the HTTP 200 streaming response.
++    const checkedResponse = await peekResponsesApiStream(providerResponse);
++    if (!checkedResponse) {
++      log?.warn?.(
++        "EMPTY_RESPONSES_STREAM",
++        `${model} returned empty Responses API stream — triggering fallback`
++      );
++      appendRequestLog({
++        model,
++        provider,
++        connectionId,
++        status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}`,
++      }).catch(() => {});
++      persistAttemptLogs({
++        status: HTTP_STATUS.BAD_GATEWAY,
++        error: "empty_content",
++        providerRequest: finalBody || translatedBody,
++        providerResponse: null,
++        clientResponse: buildErrorBody(
++          HTTP_STATUS.BAD_GATEWAY,
++          "Provider returned empty content"
++        ),
++        cacheSource: "upstream",
++      });
++      persistFailureUsage(HTTP_STATUS.BAD_GATEWAY, "empty_content");
++      return createErrorResult(
++        HTTP_STATUS.BAD_GATEWAY,
++        "Provider returned empty content"
++      );
++    }
++    providerResponse = checkedResponse;
++    console.log(`[OMNIROUTE_PATCHED:resp2cc] stream translate openai-responses -> openai model=${model}`);
++
+     // Provider returns openai-responses, translate to openai (Chat Completions) that clients expect
+     log?.debug?.("STREAM", `Responses translation mode: openai-responses → openai`);
+     transformStream = createSSETransformStreamWithLogger(
+diff --git a/open-sse/translator/response/openai-responses.ts b/open-sse/translator/response/openai-responses.ts
+index a5b5ceaf..91859716 100644
+--- a/open-sse/translator/response/openai-responses.ts
++++ b/open-sse/translator/response/openai-responses.ts
+@@ -508,14 +508,40 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
+     state.created = Math.floor(Date.now() / 1000);
+     state.toolCallIndex = 0;
+     state.currentToolCallId = null;
++    state.roleSent = false;
+   }
+ 
++  // Prepend role: "assistant" chunk before the first content chunk.
++  // OpenAI Chat Completions streaming always sends this as the first delta.
++  // Without it, OpenAI SDK (used by LangChain/LibreChat) silently drops
++  // subsequent tool_calls chunks because the assistant message is never initialized.
++  const withRole = (chunk) => {
++    if (state.roleSent || !chunk) return chunk;
++    state.roleSent = true;
++    const roleChunk = {
++      id: state.chatId,
++      object: "chat.completion.chunk",
++      created: state.created,
++      model: state.model || "gpt-4",
++      choices: [
++        {
++          index: 0,
++          delta: { role: "assistant", content: null },
++          finish_reason: null,
++        },
++      ],
++    };
++    return [roleChunk, chunk];
++  };
++
++  const _tag = `[OMNIROUTE_PATCHED:resp2cc]`;
++
+   // Text content delta
+   if (eventType === "response.output_text.delta") {
+     const delta = data.delta || "";
+     if (!delta) return null;
+ 
+-    return {
++    return withRole({
+       id: state.chatId,
+       object: "chat.completion.chunk",
+       created: state.created,
+@@ -527,7 +553,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
+           finish_reason: null,
+         },
+       ],
+-    };
++    });
+   }
+ 
+   // Text content done (ignore, we handle via delta)
+@@ -543,6 +569,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
+     state.currentToolCallDeferred = false;
+ 
+     const toolName = normalizeToolName(item.name);
++    console.log(`${_tag} output_item.added call_id=${item.call_id} name=${item.name} deferred=${!toolName}`);
+     if (!toolName) {
+       // Some Responses providers briefly emit placeholder/empty tool names.
+       // Defer emission until output_item.done in case the final name is populated there.
+@@ -550,7 +577,15 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
+       return null;
+     }
+ 
+-    return {
++    if (state.toolCalls instanceof Map) {
++      state.toolCalls.set(state.toolCallIndex, {
++        id: state.currentToolCallId,
++        type: "function",
++        function: { name: toolName, arguments: "" },
++      });
++    }
++
++    return withRole({
+       id: state.chatId,
+       object: "chat.completion.chunk",
+       created: state.created,
+@@ -574,7 +609,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
+           finish_reason: null,
+         },
+       ],
+-    };
++    });
+   }
+ 
+   // Function call arguments delta
+@@ -586,6 +621,10 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
+     if (!argsDelta) return null;
+ 
+     state.currentToolCallArgsBuffer = (state.currentToolCallArgsBuffer || "") + argsDelta;
++    if (state.toolCalls instanceof Map && state.toolCalls.has(state.toolCallIndex)) {
++      const tc = state.toolCalls.get(state.toolCallIndex);
++      tc.function.arguments = (tc.function.arguments || "") + argsDelta;
++    }
+     if (state.currentToolCallDeferred) return null;
+ 
+     return {
+@@ -630,6 +669,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
+       }
+ 
+       state.toolCallIndex++;
++      console.log(`${_tag} output_item.done(deferred) call_id=${callId} name=${toolName} idx=${currentIndex}`);
+ 
+       let argsToEmit = item.arguments;
+       if (argsToEmit != null && typeof argsToEmit === "object" && !Array.isArray(argsToEmit)) {
+@@ -648,7 +688,19 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
+             : JSON.stringify(argsToEmit)
+           : buffered;
+ 
+-      return {
++      if (state.toolCalls instanceof Map) {
++        state.toolCalls.set(currentIndex, {
++          id: callId,
++          type: "function",
++          function: { name: toolName, arguments: argsStr || "" },
++        });
++      }
++
++      if (typeof state.accumulatedContent === "string" && argsStr && state.accumulatedContent.includes(argsStr)) {
++        state.accumulatedContent = state.accumulatedContent.replace(argsStr, "").trim();
++      }
++
++      return withRole({
+         id: state.chatId,
+         object: "chat.completion.chunk",
+         created: state.created,
+@@ -672,9 +724,10 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
+             finish_reason: null,
+           },
+         ],
+-      };
++      });
+     }
+ 
++    console.log(`${_tag} output_item.done(normal) call_id=${callId} name=${toolName} idx=${currentIndex} buffered=${buffered.length}`);
+     state.toolCallIndex++;
+     state.currentToolCallArgsBuffer = ""; // reset for next tool call
+     state.currentToolCallId = null;
+@@ -692,6 +745,20 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
+ 
+       const argsStr = typeof argsToEmit === "string" ? argsToEmit : JSON.stringify(argsToEmit);
+       if (argsStr) {
++        if (state.toolCalls instanceof Map) {
++          if (state.toolCalls.has(currentIndex)) {
++            state.toolCalls.get(currentIndex).function.arguments = argsStr;
++          } else {
++            state.toolCalls.set(currentIndex, {
++              id: callId,
++              type: "function",
++              function: { name: toolName, arguments: argsStr },
++            });
++          }
++        }
++        if (typeof state.accumulatedContent === "string" && state.accumulatedContent.includes(argsStr)) {
++          state.accumulatedContent = state.accumulatedContent.replace(argsStr, "").trim();
++        }
+         return {
+           id: state.chatId,
+           object: "chat.completion.chunk",
+@@ -808,7 +875,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
+   ) {
+     const reasoningDelta = data.delta || "";
+     if (!reasoningDelta) return null;
+-    return {
++    return withRole({
+       id: state.chatId,
+       object: "chat.completion.chunk",
+       created: state.created,
+@@ -820,7 +887,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
+           finish_reason: null,
+         },
+       ],
+-    };
++    });
+   }
+ 
+   // Handle true reasoning summary ("Thought for 15s").
+@@ -835,7 +902,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
+     const reasoningDeltaShape = state.copilotCompatibleReasoning
+       ? { reasoning_text: reasoningDelta }
+       : { reasoning_content: reasoningDelta };
+-    return {
++    return withRole({
+       id: state.chatId,
+       object: "chat.completion.chunk",
+       created: state.created,
+@@ -847,7 +914,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
+           finish_reason: null,
+         },
+       ],
+-    };
++    });
+   }
+ 
+   // Ignore other events
+diff --git a/open-sse/utils/stream.ts b/open-sse/utils/stream.ts
+index cda5a84a..994431a8 100644
+--- a/open-sse/utils/stream.ts
++++ b/open-sse/utils/stream.ts
+@@ -1478,7 +1478,12 @@ export function createSSEStream(options: StreamOptions = {}) {
+           }
+ 
+           // Generic fallback: delta string, top-level content/text (e.g. some SSE payloads)
+-          if (state?.accumulatedContent !== undefined) {
++          // Skip Responses API events — their deltas are not text content and are handled
++          // by the openai-responses translator which populates state.toolCalls directly.
++          const _genericDeltaEventType = (parsed as JsonRecord).type as string | undefined;
++          const _isResponsesApiEvent =
++            typeof _genericDeltaEventType === "string" && _genericDeltaEventType.startsWith("response.");
++          if (state?.accumulatedContent !== undefined && !_isResponsesApiEvent) {
+             if (typeof (parsed as JsonRecord).delta === "string") {
+               const d = (parsed as JsonRecord).delta as string;
+               state.accumulatedContent = appendBoundedText(state.accumulatedContent, d);

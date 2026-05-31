@@ -1,0 +1,295 @@
+diff --git a/client/src/components/Chat/Messages/MessageTimeInfo.tsx b/client/src/components/Chat/Messages/MessageTimeInfo.tsx
+new file mode 100644
+index 000000000..a82ad8149
+--- /dev/null
++++ b/client/src/components/Chat/Messages/MessageTimeInfo.tsx
+@@ -0,0 +1,84 @@
++import React, { memo, useMemo } from 'react';
++import type { TMessage } from 'librechat-data-provider';
++import { useOptionalMessagesOperations } from '~/Providers/MessagesViewContext';
++import { cn } from '~/utils';
++import {
++  computeResponseDurationMs,
++  formatDuration,
++  formatMessageTime,
++} from '~/utils/messageTime';
++
++type MessageTimeInfoProps = {
++  message: TMessage;
++  /**
++   * When true the info is visible at all times; otherwise it only appears
++   * while the surrounding `.group` is hovered/focused — mirroring the
++   * behaviour of HoverButtons.
++   */
++  isLast?: boolean;
++};
++
++/**
++ * Renders the message creation time (ISO without seconds) and, for assistant
++ * messages, the duration between the parent user message and this assistant
++ * reply. Styled to sit alongside HoverButtons in the message SubRow.
++ *
++ * For assistant messages the duration is rendered first, then the timestamp,
++ * separated by a middle dot — e.g. `12.3s · 2026-05-27 14:33`.
++ */
++function MessageTimeInfo({ message, isLast = false }: MessageTimeInfoProps) {
++  const { getMessages } = useOptionalMessagesOperations();
++
++  const createdAt = message.createdAt;
++  const parentId = message.parentMessageId;
++  const isAssistant = message.isCreatedByUser !== true;
++
++  const parentCreatedAt = useMemo(() => {
++    if (!isAssistant || !parentId) {
++      return null;
++    }
++    const messages = getMessages();
++    if (!messages) {
++      return null;
++    }
++    const parent = messages.find((m) => m.messageId === parentId);
++    return parent?.createdAt ?? null;
++  }, [getMessages, isAssistant, parentId]);
++
++  const durationMs = useMemo(
++    () => (isAssistant ? computeResponseDurationMs(parentCreatedAt, createdAt) : null),
++    [isAssistant, parentCreatedAt, createdAt],
++  );
++
++  if (!createdAt) {
++    return null;
++  }
++
++  const timestamp = formatMessageTime(createdAt);
++  if (!timestamp) {
++    return null;
++  }
++  const duration = durationMs != null ? formatDuration(durationMs) : '';
++  const isoAttr = typeof createdAt === 'string' ? createdAt : undefined;
++
++  return (
++    <span
++      className={cn(
++        'flex select-none items-center gap-1 self-end text-text-secondary',
++        !isLast &&
++          'md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100',
++      )}
++      data-testid="message-time-info"
++    >
++      {duration ? (
++        <>
++          <span aria-label={`response duration ${duration}`}>{duration}</span>
++          <span aria-hidden="true">·</span>
++        </>
++      ) : null}
++      <time dateTime={isoAttr}>{timestamp}</time>
++    </span>
++  );
++}
++
++export default memo(MessageTimeInfo);
+diff --git a/client/src/utils/messageTime.ts b/client/src/utils/messageTime.ts
+new file mode 100644
+index 000000000..72d267761
+--- /dev/null
++++ b/client/src/utils/messageTime.ts
+@@ -0,0 +1,89 @@
++/**
++ * Helpers for formatting message timestamps and assistant response durations.
++ *
++ * Inspired by opencode's `Locale` helpers (packages/opencode/src/util/locale.ts).
++ * Times are rendered in ISO-like form without seconds (e.g. `2026-05-27 12:34`),
++ * durations follow the opencode style (e.g. `123ms`, `12.3s`, `2m 15s`).
++ */
++
++const pad = (value: number): string => value.toString().padStart(2, '0');
++
++const toDate = (input: string | number | Date | null | undefined): Date | null => {
++  if (input == null || input === '') {
++    return null;
++  }
++  const date = input instanceof Date ? input : new Date(input);
++  if (Number.isNaN(date.getTime())) {
++    return null;
++  }
++  return date;
++};
++
++/**
++ * ISO 8601 without seconds, using a space separator for readability:
++ * `YYYY-MM-DD HH:MM`.
++ */
++export const formatMessageTime = (
++  input: string | number | Date | null | undefined,
++): string => {
++  const date = toDate(input);
++  if (!date) {
++    return '';
++  }
++  const year = date.getFullYear();
++  const month = pad(date.getMonth() + 1);
++  const day = pad(date.getDate());
++  const hour = pad(date.getHours());
++  const minute = pad(date.getMinutes());
++  return `${year}-${month}-${day} ${hour}:${minute}`;
++};
++
++/**
++ * Format a duration in milliseconds in the opencode style:
++ * `123ms`, `12.3s`, `2m 15s`, `1h 5m`, `1d 2h`.
++ */
++export const formatDuration = (ms: number): string => {
++  if (!Number.isFinite(ms) || ms < 0) {
++    return '';
++  }
++  if (ms < 1000) {
++    return `${Math.round(ms)}ms`;
++  }
++  if (ms < 60_000) {
++    return `${(ms / 1000).toFixed(1)}s`;
++  }
++  if (ms < 3_600_000) {
++    const minutes = Math.floor(ms / 60_000);
++    const seconds = Math.floor((ms % 60_000) / 1000);
++    return `${minutes}m ${seconds}s`;
++  }
++  if (ms < 86_400_000) {
++    const hours = Math.floor(ms / 3_600_000);
++    const minutes = Math.floor((ms % 3_600_000) / 60_000);
++    return `${hours}h ${minutes}m`;
++  }
++  const days = Math.floor(ms / 86_400_000);
++  const hours = Math.floor((ms % 86_400_000) / 3_600_000);
++  return `${days}d ${hours}h`;
++};
++
++/**
++ * Compute the elapsed milliseconds between a parent (user) message and the
++ * current (assistant) message. Returns `null` when either timestamp is missing
++ * or the computed value is non-positive.
++ */
++export const computeResponseDurationMs = (
++  parentCreatedAt: string | number | Date | null | undefined,
++  messageCreatedAt: string | number | Date | null | undefined,
++): number | null => {
++  const start = toDate(parentCreatedAt);
++  const end = toDate(messageCreatedAt);
++  if (!start || !end) {
++    return null;
++  }
++  const diff = end.getTime() - start.getTime();
++  if (diff <= 0) {
++    return null;
++  }
++  return diff;
++};
+diff --git a/client/src/components/Chat/Messages/MessageParts.tsx b/client/src/components/Chat/Messages/MessageParts.tsx
+index 2d0e3d512..47a431c28 100644
+--- a/client/src/components/Chat/Messages/MessageParts.tsx
++++ b/client/src/components/Chat/Messages/MessageParts.tsx
+@@ -8,6 +8,7 @@ import { cn, getHeaderPrefixForScreenReader, getMessageAriaLabel } from '~/utils
+ import MessageIcon from '~/components/Chat/Messages/MessageIcon';
+ import ContentParts from './Content/ContentParts';
+ import { fontSizeAtom } from '~/store/fontSize';
++import MessageTimeInfo from './MessageTimeInfo';
+ import SiblingSwitch from './SiblingSwitch';
+ import MultiMessage from './MultiMessage';
+ import HoverButtons from './HoverButtons';
+@@ -171,6 +172,7 @@ export default function Message(props: TMessageProps) {
+                       latestMessageId={latestMessageId}
+                       isLast={isLast}
+                     />
++                    <MessageTimeInfo message={message} isLast={isLast} />
+                   </SubRow>
+                 )}
+               </div>
+diff --git a/client/src/components/Chat/Messages/ui/MessageRender.tsx b/client/src/components/Chat/Messages/ui/MessageRender.tsx
+index dd5563603..b37a0e852 100644
+--- a/client/src/components/Chat/Messages/ui/MessageRender.tsx
++++ b/client/src/components/Chat/Messages/ui/MessageRender.tsx
+@@ -10,6 +10,7 @@ import PlaceholderRow from '~/components/Chat/Messages/ui/PlaceholderRow';
+ import SiblingSwitch from '~/components/Chat/Messages/SiblingSwitch';
+ import HoverButtons from '~/components/Chat/Messages/HoverButtons';
+ import MessageIcon from '~/components/Chat/Messages/MessageIcon';
++import MessageTimeInfo from '~/components/Chat/Messages/MessageTimeInfo';
+ import SubRow from '~/components/Chat/Messages/SubRow';
+ import { fontSizeAtom } from '~/store/fontSize';
+ import { MessageContext } from '~/Providers';
+@@ -80,6 +81,8 @@ function areMessageRenderPropsEqual(prev: MessageRenderProps, next: MessageRende
+     prevMsg.endpoint === nextMsg.endpoint &&
+     prevMsg.iconURL === nextMsg.iconURL &&
+     prevMsg.feedback?.rating === nextMsg.feedback?.rating &&
++    prevMsg.createdAt === nextMsg.createdAt &&
++    prevMsg.parentMessageId === nextMsg.parentMessageId &&
+     (prevMsg.files?.length ?? 0) === (nextMsg.files?.length ?? 0)
+   );
+ }
+@@ -257,6 +260,7 @@ const MessageRender = memo(function MessageRender({
+                 handleFeedback={handleFeedback}
+                 isLast={isLast}
+               />
++              <MessageTimeInfo message={msg} isLast={isLast} />
+             </SubRow>
+           )}
+         </div>
+diff --git a/client/src/components/Messages/ContentRender.tsx b/client/src/components/Messages/ContentRender.tsx
+index 4ba8db36f..8dc96dddc 100644
+--- a/client/src/components/Messages/ContentRender.tsx
++++ b/client/src/components/Messages/ContentRender.tsx
+@@ -10,6 +10,7 @@ import PlaceholderRow from '~/components/Chat/Messages/ui/PlaceholderRow';
+ import SiblingSwitch from '~/components/Chat/Messages/SiblingSwitch';
+ import HoverButtons from '~/components/Chat/Messages/HoverButtons';
+ import MessageIcon from '~/components/Chat/Messages/MessageIcon';
++import MessageTimeInfo from '~/components/Chat/Messages/MessageTimeInfo';
+ import SubRow from '~/components/Chat/Messages/SubRow';
+ import { fontSizeAtom } from '~/store/fontSize';
+ import store from '~/store';
+@@ -78,6 +79,8 @@ function areContentRenderPropsEqual(prev: ContentRenderProps, next: ContentRende
+     prevMsg.endpoint === nextMsg.endpoint &&
+     prevMsg.iconURL === nextMsg.iconURL &&
+     prevMsg.feedback?.rating === nextMsg.feedback?.rating &&
++    prevMsg.createdAt === nextMsg.createdAt &&
++    prevMsg.parentMessageId === nextMsg.parentMessageId &&
+     (prevMsg.attachments?.length ?? 0) === (nextMsg.attachments?.length ?? 0)
+   );
+ }
+@@ -247,6 +250,7 @@ const ContentRender = memo(function ContentRender({
+                 handleFeedback={handleFeedback}
+                 isLast={isLast}
+               />
++              <MessageTimeInfo message={msg} isLast={isLast} />
+             </SubRow>
+           )}
+         </div>
+diff --git a/client/src/components/Share/Message.tsx b/client/src/components/Share/Message.tsx
+index 8e2c7796e..e7f7bff9a 100644
+--- a/client/src/components/Share/Message.tsx
++++ b/client/src/components/Share/Message.tsx
+@@ -1,6 +1,7 @@
+ import { useAtomValue } from 'jotai';
+ import type { TMessageProps } from '~/common';
+ import MinimalHoverButtons from '~/components/Chat/Messages/MinimalHoverButtons';
++import MessageTimeInfo from '~/components/Chat/Messages/MessageTimeInfo';
+ import MessageContent from '~/components/Chat/Messages/Content/MessageContent';
+ import SearchContent from '~/components/Chat/Messages/Content/SearchContent';
+ import SiblingSwitch from '~/components/Chat/Messages/SiblingSwitch';
+@@ -111,6 +112,7 @@ export default function Message(props: TMessageProps) {
+                   setSiblingIdx={setSiblingIdx}
+                 />
+                 <MinimalHoverButtons message={message} searchResults={searchResults} />
++                <MessageTimeInfo message={message} />
+               </SubRow>
+             </div>
+           </div>
+diff --git a/client/src/utils/index.ts b/client/src/utils/index.ts
+index bba6b5dc7..6cd75893a 100644
+--- a/client/src/utils/index.ts
++++ b/client/src/utils/index.ts
+@@ -20,6 +20,7 @@ export * from './presets';
+ export * from './prompts';
+ export * from './textarea';
+ export * from './messages';
++export * from './messageTime';
+ export * from './redirect';
+ export * from './languages';
+ export * from './endpoints';

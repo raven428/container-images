@@ -1,0 +1,116 @@
+diff --git a/client/src/components/Nav/SettingsTabs/General/General.tsx b/client/src/components/Nav/SettingsTabs/General/General.tsx
+index 90224ac03..ea8434083 100644
+--- a/client/src/components/Nav/SettingsTabs/General/General.tsx
++++ b/client/src/components/Nav/SettingsTabs/General/General.tsx
+@@ -22,6 +22,13 @@ const toggleSwitchConfigs = [
+     hoverCardText: undefined,
+     key: 'autoScroll',
+   },
++  {
++    stateAtom: store.scrollPause,
++    localizationKey: 'com_nav_scroll_pause' as const,
++    switchId: 'scrollPause',
++    hoverCardText: undefined,
++    key: 'scrollPause',
++  },
+   {
+     stateAtom: store.keepScreenAwake,
+     localizationKey: 'com_nav_keep_screen_awake' as const,
+diff --git a/client/src/hooks/Messages/useMessageScrolling.ts b/client/src/hooks/Messages/useMessageScrolling.ts
+index 9fa51f085..5911fa7d7 100644
+--- a/client/src/hooks/Messages/useMessageScrolling.ts
++++ b/client/src/hooks/Messages/useMessageScrolling.ts
+@@ -11,6 +11,7 @@ const debounceRate = 150;
+ 
+ export default function useMessageScrolling(messagesTree?: TMessage[] | null) {
+   const autoScroll = useRecoilValue(store.autoScroll);
++  const scrollPause = useRecoilValue(store.scrollPause);
+ 
+   const scrollableRef = useRef<HTMLDivElement | null>(null);
+   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+@@ -19,6 +20,9 @@ export default function useMessageScrolling(messagesTree?: TMessage[] | null) {
+   const { setAbortScroll, isSubmitting, abortScroll } = useMessagesSubmission();
+ 
+   const timeoutIdRef = useRef<NodeJS.Timeout>();
++  const scrollPausedForStream = useRef(false);
++  const streamStartScrollHeight = useRef(0);
++  const prevIsSubmitting = useRef(false);
+ 
+   const debouncedSetShowScrollButton = useCallback((value: boolean) => {
+     clearTimeout(timeoutIdRef.current);
+@@ -80,7 +84,30 @@ export default function useMessageScrolling(messagesTree?: TMessage[] | null) {
+       return;
+     }
+ 
++    if (isSubmitting && !prevIsSubmitting.current) {
++      scrollPausedForStream.current = false;
++      streamStartScrollHeight.current = scrollableRef.current.scrollHeight;
++    }
++    prevIsSubmitting.current = isSubmitting;
++
++    if (!isSubmitting) {
++      scrollPausedForStream.current = false;
++    }
++
+     if (isSubmitting && scrollToBottom && abortScroll !== true) {
++      if (scrollPause && scrollPausedForStream.current) {
++        return;
++      }
++
++      if (scrollPause && !scrollPausedForStream.current) {
++        const contentGrowth =
++          scrollableRef.current.scrollHeight - streamStartScrollHeight.current;
++        if (contentGrowth > scrollableRef.current.clientHeight) {
++          scrollPausedForStream.current = true;
++          return;
++        }
++      }
++
+       scrollToBottom();
+     }
+ 
+@@ -89,7 +116,7 @@ export default function useMessageScrolling(messagesTree?: TMessage[] | null) {
+         scrollToBottom && scrollToBottom.cancel();
+       }
+     };
+-  }, [isSubmitting, messagesTree, scrollToBottom, abortScroll]);
++  }, [isSubmitting, messagesTree, scrollToBottom, abortScroll, scrollPause]);
+ 
+   useEffect(() => {
+     if (!messagesEndRef.current || !scrollableRef.current) {
+diff --git a/client/src/locales/en/translation.json b/client/src/locales/en/translation.json
+index 74c668038..4d7747e2c 100644
+--- a/client/src/locales/en/translation.json
++++ b/client/src/locales/en/translation.json
+@@ -414,6 +414,7 @@
+   "com_nav_audio_process_error": "Error processing audio: {{0}}",
+   "com_nav_auto_expand_tools": "Auto-expand tool details",
+   "com_nav_auto_scroll": "Auto-Scroll to latest message on chat open",
++  "com_nav_scroll_pause": "Pause auto-scroll when response exceeds screen height",
+   "com_nav_auto_send_prompts": "Send prompts on select",
+   "com_nav_auto_send_prompts_desc": "Automatically submit prompt to chat when selected",
+   "com_nav_auto_send_text": "Auto send text",
+diff --git a/client/src/locales/ru/translation.json b/client/src/locales/ru/translation.json
+index 0d2e717cd..8957bff42 100644
+--- a/client/src/locales/ru/translation.json
++++ b/client/src/locales/ru/translation.json
+@@ -393,6 +393,7 @@
+   "com_nav_audio_play_error": "Ошибка воспроизведения аудио: {{0}}",
+   "com_nav_audio_process_error": "Ошибка обработки аудио: {{0}}",
+   "com_nav_auto_scroll": "Автоматически проматывать к самым новым сообщениям при открытии",
++  "com_nav_scroll_pause": "Пауза автоскролла при превышении ответом высоты экрана",
+   "com_nav_auto_send_prompts": "Автоотправка промптов",
+   "com_nav_auto_send_text": "Автоотправка сообщений",
+   "com_nav_auto_transcribe_audio": "Автоматическая транскрипция",
+diff --git a/client/src/store/settings.ts b/client/src/store/settings.ts
+index 84bb81501..51218519a 100644
+--- a/client/src/store/settings.ts
++++ b/client/src/store/settings.ts
+@@ -17,6 +17,7 @@ const staticAtoms = {
+ const localStorageAtoms = {
+   // General settings
+   autoScroll: atomWithLocalStorage('autoScroll', false),
++  scrollPause: atomWithLocalStorage('scrollPause', true),
+   sidebarExpanded: atomWithLocalStorage(
+     'unifiedSidebarExpanded',
+     typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches ? false : true,
