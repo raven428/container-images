@@ -1,0 +1,24 @@
+--- a/src/basic/process-util.c
++++ b/src/basic/process-util.c
+@@ -2115,8 +2115,11 @@
+                         return r;
+ 
+                 cgroup_fd = open(resolved_cgroup, O_PATH|O_DIRECTORY|O_CLOEXEC);
+-                if (cgroup_fd < 0)
+-                        return -errno;
++                if (cgroup_fd < 0) {
++                        /* cgroup dir does not exist (patched cg_create fakes success).
++                         * Fall back to spawning without CLONE_INTO_CGROUP. */
++                        goto skip_cgroup;
++                }
+ 
+                 r = posix_spawnattr_setcgroup_np(&attr, cgroup_fd);
+                 if (r != 0)
+@@ -2124,6 +2127,7 @@
+ 
+                 flags |= POSIX_SPAWN_SETCGROUP;
+         }
++skip_cgroup:
+ #endif
+ 
+         r = posix_spawnattr_setflags(&attr, flags);
