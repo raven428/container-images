@@ -1,7 +1,7 @@
 # Container images collection
 
 [![containers](https://github.com/raven428/container-images/actions/workflows/containers.yaml/badge.svg)](https://github.com/raven428/container-images/actions/workflows/containers.yaml)
-[![containers](https://github.com/raven428/container-images/actions/workflows/appimages.yaml/badge.svg)](https://github.com/raven428/container-images/actions/workflows/appimages.yaml)
+[![AppImages](https://github.com/raven428/container-images/actions/workflows/appimages.yaml/badge.svg)](https://github.com/raven428/container-images/actions/workflows/appimages.yaml)
 
 
 ## Before manual `./push.sh`
