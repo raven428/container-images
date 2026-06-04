@@ -22,7 +22,7 @@ index 6a2e82a6..6ed630e7 100644
        //{ id: "?", name: "Goldeneye" },
      ],
 diff --git a/open-sse/executors/base.ts b/open-sse/executors/base.ts
-index 6fa9f258..844fb0e5 100644
+index 6fa9f258..24c53840 100644
 --- a/open-sse/executors/base.ts
 +++ b/open-sse/executors/base.ts
 @@ -838,7 +838,7 @@ export class BaseExecutor {
@@ -30,17 +30,26 @@ index 6fa9f258..844fb0e5 100644
              Accept: "application/json",
              "anthropic-version": "2023-06-01",
 -            "anthropic-beta": selectBetaFlags(tb),
-+            "anthropic-beta": selectBetaFlags(tb, model),
++            "anthropic-beta": selectBetaFlags(tb, model, extendedContext === true),
              "anthropic-dangerous-direct-browser-access": "true",
              "x-app": "cli",
              "User-Agent": `claude-cli/${CLAUDE_CODE_VERSION} (external, cli)`,
 diff --git a/open-sse/executors/claudeIdentity.ts b/open-sse/executors/claudeIdentity.ts
-index 30e081ac..9fc4503a 100644
+index 30e081ac..691ca4fb 100644
 --- a/open-sse/executors/claudeIdentity.ts
 +++ b/open-sse/executors/claudeIdentity.ts
-@@ -289,7 +289,16 @@ export function parseUpstreamMetadataUserId(
+@@ -288,8 +288,26 @@ export function parseUpstreamMetadataUserId(
+  * Pick the anthropic-beta flag set that matches the request shape. Real CLI
   * uses three patterns: minimal probe, structured-output, and full agent.
   * Sending the full set on every shape is itself a fingerprint.
++ *
++ * `extendedContext` controls the `context-1m-2025-08-07` flag explicitly —
++ * Anthropic returns `429 Usage credits are required for long context requests`
++ * when 1M beta is sent without an active long-context add-on. Combo paths
++ * inherit full-agent shape from upstream translation, which previously
++ * triggered unconditional 1M flag injection on Sonnet (Opus tolerates it on
++ * some plans, Sonnet does not). The 1M flag now only ships when a caller
++ * explicitly opts in (e.g. `claude-sonnet-4-6[1m]` model suffix).
   */
 -export function selectBetaFlags(body: Record<string, unknown> | null | undefined): string {
 +const MODELS_WITHOUT_LONG_CONTEXT = new Set([
@@ -51,12 +60,13 @@ index 30e081ac..9fc4503a 100644
 +
 +export function selectBetaFlags(
 +  body: Record<string, unknown> | null | undefined,
-+  model?: string | null
++  model?: string | null,
++  extendedContext: boolean = false
 +): string {
    const b = body || {};
    const hasSystem =
      !!b.system &&
-@@ -302,10 +311,12 @@ export function selectBetaFlags(body: Record<string, unknown> | null | undefined
+@@ -302,10 +320,12 @@ export function selectBetaFlags(body: Record<string, unknown> | null | undefined
      !!(b.response_format as { type?: string } | undefined)?.type;
    const isFullAgent = hasTools && hasSystem;
  
@@ -66,7 +76,7 @@ index 30e081ac..9fc4503a 100644
    if (isFullAgent) flags.push("claude-code-20250219");
    flags.push("oauth-2025-04-20");
 -  if (isFullAgent) flags.push("context-1m-2025-08-07");
-+  if (isFullAgent && !isHaiku) flags.push("context-1m-2025-08-07");
++  if (isFullAgent && !isHaiku && extendedContext) flags.push("context-1m-2025-08-07");
    flags.push(
      "interleaved-thinking-2025-05-14",
      "redact-thinking-2026-02-12",
