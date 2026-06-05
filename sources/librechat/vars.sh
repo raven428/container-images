@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -ueo pipefail
-export IMAGE_VER='000'
-mkdir -p "sources/${TAG}/_shared"
+# shellcheck disable=2034
+{
+  IMAGE_VER='001'
+  SHARED_ASSETS=()
+}
+stage_shared_assets
 _upstream="sources/${TAG}/_shared/upstream"
 checkout_upstream \
   'https://github.com/danny-avila/LibreChat.git' \

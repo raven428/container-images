@@ -1,2 +1,3 @@
-/sources/*/_shared
 appimage-output
+/sources/*/_shared
+/_shared/install/*/patches

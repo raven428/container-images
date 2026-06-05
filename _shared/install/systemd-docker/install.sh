@@ -2,7 +2,7 @@
 # Runtime stage: configure apt, install packages, apply systemd tweaks.
 set -ueo pipefail
 export DEBIAN_FRONTEND=noninteractive
-S2D='/files/shared/install/systemd2docker'
+S2D='/files/shared/install/systemd-docker'
 "${S2D}/apt-sources.sh"
 apt-get update
 apt-get install -y --no-install-recommends \
