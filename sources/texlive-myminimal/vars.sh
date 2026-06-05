@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -ueo pipefail
-export IMAGE_VER='003'
-/usr/bin/env rm -rfv "sources/${TAG}/_shared"
-/usr/bin/env cp -rfv _shared "sources/${TAG}"
+# shellcheck disable=2034
+{
+  IMAGE_VER='004'
+  SHARED_ASSETS=()
+}
+stage_shared_assets

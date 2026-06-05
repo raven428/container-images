@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -ueo pipefail
 # shellcheck disable=2034
-IMAGE_VER='000'
-/usr/bin/env rm -rfv "sources/${TAG}/files"
-/usr/bin/env cp -rfv _shared/install/openwrt "sources/${TAG}/files"
+{
+  IMAGE_VER='001'
+  SHARED_ASSETS=(
+    '_shared/install/openwrt/:_shared/files'
+  )
+}
+stage_shared_assets
+# shellcheck disable=2034
+BUILD_CONTEXT_DIR="sources/${TAG}/_shared"
+# shellcheck disable=2034
+PODMAN_EXTRA_ARGS=(--file "sources/${TAG}/Dockerfile")

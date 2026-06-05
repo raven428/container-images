@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
+# cspell:ignore nodoc noinsttest buildpackage devscripts fakeroot debhelper
 # Builder stage: configure apt, install build deps, patch and build systemd.
 set -ueo pipefail
 export DEBIAN_FRONTEND=noninteractive
-S2D='/files/shared/install/systemd2docker'
+S2D='/files/shared/install/systemd-docker'
 "${S2D}/apt-sources.sh" with-src
 apt-get update
 apt-get install -y --no-install-recommends \

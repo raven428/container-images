@@ -3,14 +3,14 @@ FROM debian:trixie-slim AS builder
 ENV CODENAME=trixie
 COPY patches /files/patches
 COPY _shared /files/shared
-RUN /files/shared/install/systemd2docker/build.sh
+RUN /files/shared/install/systemd-docker/build.sh
 
 FROM debian:trixie-slim
 LABEL org.opencontainers.image.source https://github.com/raven428/container-images
 ENV container=docker CODENAME=trixie
 COPY --from=builder /tmp/libsystemd-shared_*.deb /tmp/
 COPY _shared /files/shared
-RUN /files/shared/install/systemd2docker/install.sh
+RUN /files/shared/install/systemd-docker/install.sh
 VOLUME ["/tmp", "/run", "/run/lock"]
 STOPSIGNAL SIGRTMIN+3
 CMD ["/entrypoint.sh"]

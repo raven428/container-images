@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -ueo pipefail
-export IMAGE_VER='000'
-/usr/bin/env rm -rfv "sources/${TAG}/_shared"
-/usr/bin/env cp -rfv _shared "sources/${TAG}"
-/usr/bin/env cp -rfv podman.sh "sources/${TAG}/_shared"
-_shared/install/profile.sh "sources/${TAG}/_shared/profile-dmisu"
+# shellcheck disable=2034
+{
+  IMAGE_VER='001'
+  SHARED_ASSETS=(
+    '_shared/install/coder.sh:_shared/install/coder.sh'
+    '_shared/install/profile.sh:_shared/install/profile.sh'
+    '_shared/sudoers:_shared/sudoers'
+    'podman.sh:_shared/podman.sh'
+  )
+}
+stage_shared_assets
+stage_profile "sources/${TAG}/_shared/profile-dmisu"

@@ -1,4 +1,5 @@
 #!/bin/bash
+# cspell:ignore journalctl
 # Start systemd as PID 1 and stream the journal to stdout so all systemd
 # output is visible via docker logs. journalctl with -b replays all events
 # since boot once the journal socket appears, then follows new ones.
