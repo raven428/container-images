@@ -31,8 +31,8 @@ stage_profile() {
   install_profile "${_dest}"
 }
 
-# Build a string of no-op bash function definitions for every external command
-# found in <vars_file> and every bare function call (without /usr/bin/env).
+# Build a string of no-op bash function definitions for every function
+# declared in _shared/vars.sh that is called inside <vars_file>.
 # All arguments after the first are names to skip (not shunt); any number.
 # Usage: eval "$(_build_vars_shunts sources/foo/vars.sh)"
 #        eval "$(_build_vars_shunts sources/foo/vars.sh stage_shared_assets)"
@@ -41,28 +41,27 @@ _build_vars_shunts() {
   local _file="$1"
   shift
   local _skip=("$@")
-  local _cmd _s _found
-  {
-    # commands called via /usr/bin/env
-    # shellcheck disable=2016
-    /usr/bin/env grep -oE '/usr/bin/env [a-zA-Z_][a-zA-Z0-9_-]+' \
-      "${_file}" 2>/dev/null | /usr/bin/env awk '{print $2}'
-    # bare function/command calls at line start (e.g. stage_profile, patch)
-    /usr/bin/env grep -oE '^[a-zA-Z_][a-zA-Z0-9_-]+' \
-      "${_file}" 2>/dev/null
-  } | /usr/bin/env sort -u |
-    while IFS= read -r _cmd; do
-      # skip names requested by caller
-      _found=0
-      for _s in "${_skip[@]+"${_skip[@]}"}"; do
-        [[ "${_cmd}" == "${_s}" ]] && {
-          _found=1
-          break
-        }
-      done
-      [[ ${_found} -eq 1 ]] && continue
-      /usr/bin/env printf '%s() { :; }; ' "${_cmd}"
+  local _self
+  _self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+  local _fn _s _found
+  # grep function names declared in this file (pattern: "name() {")
+  while IFS= read -r _fn; do
+    # only emit shunt if the function is actually called in the target file
+    /usr/bin/env grep -qE "(^|[[:space:]])${_fn}([[:space:]]|$)" \
+      "${_file}" 2>/dev/null || continue
+    # skip names requested by caller
+    _found=0
+    for _s in "${_skip[@]+"${_skip[@]}"}"; do
+      [[ "${_fn}" == "${_s}" ]] && {
+        _found=1
+        break
+      }
     done
+    [[ ${_found} -eq 1 ]] && continue
+    /usr/bin/env printf '%s() { :; }; ' "${_fn}"
+  done < <(
+    /usr/bin/env grep -oP '^[a-zA-Z_][a-zA-Z0-9_]+(?=\s*\(\))' "${_self}"
+  )
 }
 
 # Expand a SHARED_ASSETS src field to a list of concrete filesystem paths.
