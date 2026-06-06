@@ -24,11 +24,21 @@ jobs:
       - name: define matrix
         id: define-matrix
         run: |
+          # Patterns of container names that produce an AppImage.
+          # Add new entries here when a new AppImage-capable image appears.
+          _appimage_patterns=(
+            '^ansible-[0-9]{2}$'
+            '^mkosi-'
+            '^texlive-'
+          )
+          _jq_tests="$(printf ' or test("%s")' "${_appimage_patterns[@]}")"
+          _jq_tests="${_jq_tests# or }"
           source _shared/_all/matrix.sh
-          FILTERED="$(echo "${DIR_SON}" | jq -Mc '([.[] | select(. |
-            test("^ansible-[0-9]{2}$") or . == "some-other-container")] +
-            ["mkosi-26_0", "texlive-myminimal"]) | unique')"
-          [[ "${FILTERED}" == "[]" ]] && FILTERED='["__skip__"]'
+          FILTERED="$(
+            printf '%s' "${DIR_SON}" |
+              jq -Mc "[.[] | select(${_jq_tests})] | unique"
+          )"
+          [[ "${FILTERED}" == '[]' ]] && FILTERED='["__skip__"]'
           echo "images=${FILTERED}" >> "${GITHUB_OUTPUT}"
       - name: create release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
@@ -60,8 +70,18 @@ jobs:
         run: |
           sudo ./podman.sh
           _img='${{ matrix.image }}'
-          _dirs='ansible-appimage/'
-          [[ "${_img}" == texlive-* ]] && _dirs="${_img}/"
+          # Images that use ansible-appimage as their build container.
+          # Everyone else builds from their own image.
+          _ansible_appimage_patterns=(
+            '^ansible-[0-9]{2}$'
+          )
+          _dirs="${_img}/"
+          for _p in "${_ansible_appimage_patterns[@]}"; do
+            if [[ "${_img}" =~ ${_p} ]]; then
+              _dirs='ansible-appimage/'
+              break
+            fi
+          done
           MANUAL_IMAGES_DIRS="${_dirs}" _shared/_all/build.sh
           TAG="${_img}" _shared/_all/appimage.sh
       - name: make draft and upload AppImage
