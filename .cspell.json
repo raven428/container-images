@@ -320,6 +320,21 @@
     "xelatex",
     "xetex",
     "xfsprogs",
+    "subshell",
+    "libsystemd",
+    "tmpfs",
+    "trixie",
+    "automount",
+    "autovt",
+    "binfmt",
+    "firstboot",
+    "hwdb",
+    "mqueue",
+    "pstore",
+    "rfkill",
+    "tmpfiles",
+    "udevd",
+    "SIGRTMIN",
     "xrange",
     "xstring",
     "xueo",
@@ -364,6 +379,11 @@
     "networking-terms",
     "computing-acronyms"
   ],
-  "ignorePaths": ["**/go.mod", "**/go.sum", "**/requirements.txt", "sources/*/patches"],
+  "ignorePaths": [
+    "**/go.mod",
+    "**/go.sum",
+    "**/requirements.txt",
+    "sources/*/patches"
+  ],
   "enabled": true
 }
