@@ -5,9 +5,8 @@ export DEBIAN_FRONTEND=noninteractive
 S2D='/files/shared/install/systemd-docker'
 "${S2D}/apt-sources.sh"
 apt-get update
-apt-get install -y --no-install-recommends \
-  systemd python3 sudo bash less ca-certificates iproute2 \
-  python3-apt aptitude python3-psutil xz-utils openssh-server
+apt-get install -y --no-install-recommends systemd bash less ca-certificates iproute2 \
+  curl openssh-server
 systemctl enable ssh
 apt-get clean
 rm -rf /usr/share/doc /usr/share/man /var/lib/apt/lists/*
@@ -21,4 +20,7 @@ cp "${S2D}/journald.conf" /etc/systemd/journald.conf.d/10-docker.conf
 cp "${S2D}/system.conf" /etc/systemd/system.conf.d/10-docker.conf
 cp "${S2D}/entrypoint.sh" /entrypoint.sh
 chmod 755 /entrypoint.sh
-rm -rf /files
+
+# cleanup
+apt-get clean
+rm -Rf /usr/share/doc /usr/share/man /var/lib/apt/lists/* /root/.cache/pip /files
