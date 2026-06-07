@@ -24,6 +24,8 @@ SPELL_CSPELL_FILTER_REGEX_EXCLUDE: "_shared/install/ansible/.+\\.diff|\
 EDITORCONFIG_EDITORCONFIG_CHECKER_FILTER_REGEX_EXCLUDE: "\
   _shared/install/ansible/.+\\.diff|\
   sources/opencode-ubuntu-22_04/files/.+\\.diff"
+JAVASCRIPT_STANDARD_FILTER_REGEX_EXCLUDE: "\
+  sources/librechat/files/entrypoint\\.js"
 EDITORCONFIG_EDITORCONFIG_CHECKER_PRE_COMMANDS:
   - command: |
       cat <<EOF > /ec-custom.sh
