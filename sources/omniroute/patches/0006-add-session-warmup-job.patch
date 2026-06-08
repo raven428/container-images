@@ -1,0 +1,1230 @@
+diff --git a/src/app/(dashboard)/dashboard/providers/[id]/page.tsx b/src/app/(dashboard)/dashboard/providers/[id]/page.tsx
+index b121641c..d7d73f1e 100644
+--- a/src/app/(dashboard)/dashboard/providers/[id]/page.tsx
++++ b/src/app/(dashboard)/dashboard/providers/[id]/page.tsx
+@@ -6889,6 +6889,7 @@ function AddApiKeyModal({
+     customUserAgent: "",
+     accountId: "",
+     consoleApiKey: "",
++    sessionWarmupEnabled: false,
+     ccCompatibleContext1m: false,
+     passthroughModels: false,
+   });
+@@ -7074,6 +7075,18 @@ function AddApiKeyModal({
+       if (provider === "bailian-coding-plan" && formData.consoleApiKey.trim()) {
+         providerSpecificData.consoleApiKey = formData.consoleApiKey.trim();
+       }
++      if (provider === "claude" && formData.sessionWarmupEnabled) {
++        providerSpecificData.sessionWarmupEnabled = true;
++      }
++      if (
++        (provider === "glm" ||
++          provider === "glm-cn" ||
++          provider === "zai" ||
++          provider === "glmt") &&
++        formData.sessionWarmupEnabled
++      ) {
++        providerSpecificData.sessionWarmupEnabled = true;
++      }
+       if (isGooglePse && formData.cx.trim()) {
+         providerSpecificData.cx = formData.cx.trim();
+       }
+@@ -7510,6 +7523,21 @@ function AddApiKeyModal({
+               onChange={(e) => setFormData({ ...formData, validationModelId: e.target.value })}
+               hint={t("validationModelIdHint")}
+             />
++            {(provider === "claude" ||
++              provider === "glm" ||
++              provider === "glm-cn" ||
++              provider === "zai" ||
++              provider === "glmt") && (
++              <Toggle
++                size="sm"
++                checked={formData.sessionWarmupEnabled}
++                onChange={(checked) =>
++                  setFormData({ ...formData, sessionWarmupEnabled: checked })
++                }
++                label={t("sessionWarmupLabel")}
++                description={t("sessionWarmupDescription")}
++              />
++            )}
+             <Input
+               label={t("priorityLabel")}
+               type="number"
+@@ -9083,6 +9111,7 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
+     codexFastServiceTier: false,
+     codexOpenaiStoreEnabled: false,
+     consoleApiKey: "",
++    sessionWarmupEnabled: false,
+     ccCompatibleContext1m: false,
+     cloudCodeProjectId: "",
+     antigravityClientProfile: "ide",
+@@ -9185,6 +9214,7 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
+         codexFastServiceTier: codexRequestDefaults.serviceTier === "priority",
+         codexOpenaiStoreEnabled: connection.providerSpecificData?.openaiStoreEnabled === true,
+         consoleApiKey: existingConsoleApiKey,
++        sessionWarmupEnabled: connection.providerSpecificData?.sessionWarmupEnabled === true,
+         ccCompatibleContext1m: ccRequestDefaults.context1m,
+         cloudCodeProjectId:
+           (connection.providerSpecificData?.projectId as string) || connection.projectId || "",
+@@ -9388,6 +9418,21 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
+             updates.providerSpecificData.consoleApiKey = undefined;
+           }
+         }
++        if (connection.provider === "claude") {
++          updates.providerSpecificData.sessionWarmupEnabled = formData.sessionWarmupEnabled
++            ? true
++            : undefined;
++        }
++        if (
++          connection.provider === "glm" ||
++          connection.provider === "glm-cn" ||
++          connection.provider === "zai" ||
++          connection.provider === "glmt"
++        ) {
++          updates.providerSpecificData.sessionWarmupEnabled = formData.sessionWarmupEnabled
++            ? true
++            : undefined;
++        }
+         if (formData.validationModelId) {
+           updates.providerSpecificData.validationModelId = formData.validationModelId;
+         }
+@@ -9431,6 +9476,9 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
+         };
+         if (isClaude) {
+           updates.providerSpecificData.blockExtraUsage = formData.blockExtraUsage;
++          updates.providerSpecificData.sessionWarmupEnabled = formData.sessionWarmupEnabled
++            ? true
++            : undefined;
+         }
+         if (isCodex) {
+           updates.providerSpecificData.requestDefaults = {
+@@ -9739,6 +9787,22 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
+           </>
+         )}
+ 
++        {(connection.provider === "claude" ||
++          connection.provider === "glm" ||
++          connection.provider === "glm-cn" ||
++          connection.provider === "zai" ||
++          connection.provider === "glmt") && (
++          <Toggle
++            size="sm"
++            checked={formData.sessionWarmupEnabled}
++            onChange={(checked) =>
++              setFormData({ ...formData, sessionWarmupEnabled: checked })
++            }
++            label={t("sessionWarmupLabel")}
++            description={t("sessionWarmupDescription")}
++          />
++        )}
++
+         {usesBaseUrl && (
+           <Input
+             label={t("baseUrlLabel")}
+diff --git a/src/i18n/messages/en.json b/src/i18n/messages/en.json
+index 0432030d..28720610 100644
+--- a/src/i18n/messages/en.json
++++ b/src/i18n/messages/en.json
+@@ -3592,6 +3592,8 @@
+     "consoleApiKeyOracleHint": "Console Api Key Oracle Hint",
+     "consoleApiKeyOracleLabel": "Console Api Key Oracle Label",
+     "consoleApiKeyOraclePlaceholder": "Console Api Key Oracle Placeholder",
++    "sessionWarmupLabel": "Auto session warmup",
++    "sessionWarmupDescription": "Periodically sends a tiny request to start the 5h quota window so your first real request does not pay the cold-start cost. Only fires when the window has not been opened yet.",
+     "cpaModeDisabledTitle": "CLIProxyAPI compatibility mode is disabled",
+     "cpaModeEnabledTitle": "CLIProxyAPI compatibility mode is enabled",
+     "customUserAgentHint": "Custom User Agent Hint",
+diff --git a/src/i18n/messages/ru.json b/src/i18n/messages/ru.json
+index d52bd69e..bef30a57 100644
+--- a/src/i18n/messages/ru.json
++++ b/src/i18n/messages/ru.json
+@@ -3592,6 +3592,8 @@
+     "consoleApiKeyOracleHint": "Console Api Key Oracle Hint",
+     "consoleApiKeyOracleLabel": "Console Api Key Oracle Label",
+     "consoleApiKeyOraclePlaceholder": "Console Api Key Oracle Placeholder",
++    "sessionWarmupLabel": "Автоматический прогрев сессии",
++    "sessionWarmupDescription": "Периодически отправляет крошечный запрос, чтобы открыть 5-часовое окно квоты — тогда твой первый реальный запрос не платит за холодный старт. Срабатывает только если окно ещё не открыто.",
+     "cpaModeDisabledTitle": "Cpa Mode Disabled Title",
+     "cpaModeEnabledTitle": "Cpa Mode Enabled Title",
+     "customUserAgentHint": "Custom User Agent Hint",
+diff --git a/src/instrumentation-node.ts b/src/instrumentation-node.ts
+index e8e89b66..7bb6eab8 100755
+--- a/src/instrumentation-node.ts
++++ b/src/instrumentation-node.ts
+@@ -189,6 +189,15 @@ export async function registerNodejs(): Promise<void> {
+     console.warn("[STARTUP] Could not restore runtime settings:", msg);
+   }
+ 
++  try {
++    const { startSessionWarmupJob } = await import("@/lib/sessionWarmupJob");
++    startSessionWarmupJob();
++    console.log("[STARTUP] Session warmup job started");
++  } catch (err: unknown) {
++    const msg = err instanceof Error ? err.message : String(err);
++    console.warn("[STARTUP] Could not start session warmup job:", msg);
++  }
++
+   try {
+     const { initAuditLog, cleanupExpiredLogs } = await import("@/lib/compliance/index");
+     initAuditLog();
+diff --git a/src/lib/sessionWarmupJob.ts b/src/lib/sessionWarmupJob.ts
+new file mode 100644
+index 00000000..ac4be8d1
+--- /dev/null
++++ b/src/lib/sessionWarmupJob.ts
+@@ -0,0 +1,667 @@
++/**
++ * Session Warmup Job
++ *
++ * Background job that periodically checks connections whose 5h quota window
++ * has NOT yet been opened (session.resetAt === null) and sends a lightweight
++ * request to start the window.
++ *
++ * Supported providers:
++ *   - claude               (Anthropic OAuth, executor pipeline)
++ *   - glm / glm-cn / zai / glmt  (Z.AI / bigmodel.cn OpenAI-compatible)
++ *
++ * Quota data uses the SAME DB cache as /dashboard/niner-quota
++ * (providerLimitsCache).  All reads/writes go through
++ * getProviderLimitsCache / fetchAndPersistProviderLimits.
++ *
++ * Toggle: per-connection `provider_specific_data.sessionWarmupEnabled: boolean`.
++ */
++
++import {
++  getProviderConnections,
++  resolveProxyForConnection,
++  updateProviderConnection,
++} from "@/lib/localDb";
++import { pickMaskedDisplayValue } from "@/shared/utils/maskEmail";
++import { getProviderLimitsCache } from "@/lib/db/providerLimits";
++import { runWithProxyContext } from "@omniroute/open-sse/utils/proxyFetch.ts";
++import { fetchAndPersistProviderLimits } from "@/lib/usage/providerLimits";
++import { getExecutor } from "@omniroute/open-sse/executors/index.ts";
++import {
++  GLM_DEFAULT_BASE_URLS,
++  getGlmApiRegion,
++} from "@omniroute/open-sse/config/glmProvider";
++
++// ── Constants ────────────────────────────────────────────────────────────────
++
++const SWEEP_INTERVAL_MS = 60 * 1000;
++const SWEEP_INITIAL_DELAY_MS = 15_000;
++const SWEEP_STAGGER_MS = 2_000;
++
++const WARMUP_TTL_MS = 60 * 60 * 1000;
++const FETCH_FAILURE_BACKOFF_MS = 5 * 60 * 1000;
++const FETCH_TIMEOUT_MS = 8_000;
++const WARMUP_BACKOFF_STEP_MS = 60 * 1000;
++const WARMUP_BACKOFF_MAX_STEPS = 5;
++const WARMUP_BACKOFF_RESET_AFTER = 6;
++const SESSION_END_JITTER_MIN_MS = 3 * 60 * 1000;
++const SESSION_END_JITTER_RANGE_MS = 12 * 60 * 1000;
++
++const GLM_PROVIDER_IDS = new Set(["glm", "glm-cn", "zai", "glmt"]);
++const GLM_WARMUP_MODEL_FALLBACK = "glm-5";
++
++const CLAUDE_PROVIDER = "claude";
++const CLAUDE_WARMUP_MODEL_FALLBACK = "claude-haiku-4-5-20251001";
++
++const ALL_TARGET_PROVIDERS = [CLAUDE_PROVIDER, ...GLM_PROVIDER_IDS];
++
++const LOG_PREFIX = "[SessionWarmup]";
++
++const WARMUP_PROBES: ReadonlyArray<{ role: "user"; content: string }> = [
++  { role: "user", content: "ok" },
++  {
++    role: "user",
++    content:
++      "Write a function that adds two numbers. Reply with just the function.",
++  },
++  { role: "user", content: "What is 17 * 23? Reply with just the number." },
++];
++
++// ── State ────────────────────────────────────────────────────────────────────
++
++interface InMemoryState {
++  fetchCooldownUntil: number;
++  knownSessionResetAt: number;
++  warmupFailureCount: number;
++  warmupBackoffUntil: number;
++  sessionEndSnoozeUntil: number;
++}
++
++const inMemoryState = new Map<string, InMemoryState>();
++
++// ── Singleton guard (globalThis survives HMR re-evaluation) ─────────────────
++
++declare global {
++  var __omnirouteSessionWarmup:
++    | {
++        initialized: boolean;
++        interval: ReturnType<typeof setInterval> | null;
++        initialTimer: ReturnType<typeof setTimeout> | null;
++      }
++    | undefined;
++}
++
++function getState() {
++  if (!globalThis.__omnirouteSessionWarmup) {
++    globalThis.__omnirouteSessionWarmup = {
++      initialized: false,
++      interval: null,
++      initialTimer: null,
++    };
++  }
++  return globalThis.__omnirouteSessionWarmup;
++}
++
++function isBuildProcess(): boolean {
++  return (
++    typeof process !== "undefined" &&
++    process.env.NEXT_PHASE === "phase-production-build"
++  );
++}
++
++function isAutomatedTestProcess(): boolean {
++  return (
++    typeof process !== "undefined" &&
++    (process.env.NODE_ENV === "test" ||
++      process.env.VITEST !== undefined ||
++      process.argv.some((arg) => arg.includes("test")))
++  );
++}
++
++function isDisabled(): boolean {
++  return isBuildProcess() || isAutomatedTestProcess();
++}
++
++// ── Public API ───────────────────────────────────────────────────────────────
++
++export function startSessionWarmupJob(): void {
++  const state = getState();
++  if (state.initialized || isDisabled()) return;
++  state.initialized = true;
++
++  console.log(
++    `${LOG_PREFIX} Starting (sweep every ${SWEEP_INTERVAL_MS / 1000}s, providers: ${ALL_TARGET_PROVIDERS.join(", ")})`
++  );
++
++  state.initialTimer = setTimeout(() => {
++    state.initialTimer = null;
++    void sweep();
++    state.interval = setInterval(() => {
++      void sweep();
++    }, SWEEP_INTERVAL_MS);
++    if (state.interval && typeof state.interval === "object" && "unref" in state.interval) {
++      (state.interval as { unref?: () => void }).unref?.();
++    }
++  }, SWEEP_INITIAL_DELAY_MS);
++  if (
++    state.initialTimer &&
++    typeof state.initialTimer === "object" &&
++    "unref" in state.initialTimer
++  ) {
++    (state.initialTimer as { unref?: () => void }).unref?.();
++  }
++}
++
++export function stopSessionWarmupJob(): void {
++  const state = getState();
++  if (state.initialTimer) {
++    clearTimeout(state.initialTimer);
++    state.initialTimer = null;
++  }
++  if (state.interval) {
++    clearInterval(state.interval);
++    state.interval = null;
++  }
++  state.initialized = false;
++}
++
++export function _resetSessionWarmupState(): void {
++  inMemoryState.clear();
++}
++
++// ── Helpers ──────────────────────────────────────────────────────────────────
++
++function getConnectionLabel(conn: {
++  name?: string;
++  email?: string;
++  id?: string;
++}): string {
++  return pickMaskedDisplayValue([conn.name, conn.email], conn.id || "-");
++}
++
++function asRecord(value: unknown): Record<string, unknown> {
++  return value && typeof value === "object" && !Array.isArray(value)
++    ? (value as Record<string, unknown>)
++    : {};
++}
++
++function isWarmupEnabled(conn: Record<string, unknown>): boolean {
++  const psd = asRecord(conn.providerSpecificData);
++  return psd.sessionWarmupEnabled === true;
++}
++
++function getLastWarmupAt(conn: Record<string, unknown>): number {
++  const psd = asRecord(conn.providerSpecificData);
++  const raw = psd.lastSessionWarmupAt;
++  if (typeof raw !== "string" && typeof raw !== "number") return 0;
++  const ms = typeof raw === "number" ? raw : Date.parse(raw);
++  return Number.isFinite(ms) ? ms : 0;
++}
++
++async function persistLastWarmupAt(
++  connectionId: string,
++  timestampMs: number
++): Promise<void> {
++  try {
++    const existing = await getProviderConnectionByIdMinimal(connectionId);
++    if (!existing) return;
++    const psd = asRecord(existing.providerSpecificData);
++    await updateProviderConnection(connectionId, {
++      providerSpecificData: {
++        ...psd,
++        lastSessionWarmupAt: new Date(timestampMs).toISOString(),
++      },
++    });
++  } catch (err) {
++    console.warn(
++      `${LOG_PREFIX} Failed to persist lastSessionWarmupAt for ${connectionId}:`,
++      err instanceof Error ? err.message : String(err)
++    );
++  }
++}
++
++async function getProviderConnectionByIdMinimal(id: string) {
++  const { getProviderConnectionById } = await import("@/lib/localDb");
++  return getProviderConnectionById(id);
++}
++
++function pickRandomProbe(): { role: "user"; content: string } {
++  return WARMUP_PROBES[Math.floor(Math.random() * WARMUP_PROBES.length)];
++}
++
++function isGlmProvider(provider: unknown): boolean {
++  return typeof provider === "string" && GLM_PROVIDER_IDS.has(provider);
++}
++
++function isClaudeProvider(provider: unknown): boolean {
++  return provider === CLAUDE_PROVIDER;
++}
++
++// ── Quota reading/writing via providerLimitsCache (DB, same as NinerQuota) ───
++
++function readResetAtFromCache(
++  connectionId: string,
++  provider: string
++): string | null {
++  const dbCache = getProviderLimitsCache(connectionId);
++  if (!dbCache?.quotas) return null;
++
++  const sessionKey = isClaudeProvider(provider)
++    ? "session (5h)"
++    : "session";
++
++  const windowData = asRecord(dbCache.quotas[sessionKey]);
++  if (!windowData) return null;
++
++  return typeof windowData.resetAt === "string" ? windowData.resetAt : null;
++}
++
++async function refreshCache(
++  connectionId: string
++): Promise<string | null> {
++  try {
++    const result = await fetchAndPersistProviderLimits(connectionId, "manual");
++    const usage = result.usage as Record<string, unknown>;
++    const quotas = asRecord(usage?.quotas);
++    const session = quotas["session (5h)"] || quotas["session"];
++    if (session && typeof session === "object") {
++      return (session as Record<string, unknown>).resetAt as string | null;
++    }
++    return null;
++  } catch {
++    return null;
++  }
++}
++
++async function getSessionResetAt(
++  connectionId: string,
++  provider: string
++): Promise<string | null> {
++  const cached = readResetAtFromCache(connectionId, provider);
++  if (cached !== null) {
++    const resetMs = Date.parse(cached);
++    if (Number.isFinite(resetMs) && resetMs > Date.now()) {
++      return cached;
++    }
++  }
++
++  return refreshCache(connectionId);
++}
++
++// ── Warmup request ───────────────────────────────────────────────────────────
++
++interface WarmupOutcome {
++  success: boolean;
++  status?: number;
++  latencyMs: number;
++  snippet?: string;
++}
++
++function getWarmupModel(conn: Record<string, unknown>): string {
++  const provider = typeof conn.provider === "string" ? conn.provider : "";
++  const model = typeof conn.defaultModel === "string" ? conn.defaultModel.trim() : "";
++  if (model) return model;
++  if (isClaudeProvider(provider)) return CLAUDE_WARMUP_MODEL_FALLBACK;
++  return GLM_WARMUP_MODEL_FALLBACK;
++}
++
++async function sendWarmupRequest(
++  conn: Record<string, unknown>
++): Promise<WarmupOutcome> {
++  const provider = typeof conn.provider === "string" ? conn.provider : "";
++
++  if (isClaudeProvider(provider)) {
++    return sendClaudeWarmupRequest(conn);
++  }
++
++  const apiKey = typeof conn.apiKey === "string" ? conn.apiKey : "";
++  if (!apiKey) {
++    return { success: false, latencyMs: 0, snippet: "missing api_key on connection" };
++  }
++
++  const model = getWarmupModel(conn);
++  const probe = pickRandomProbe();
++
++  if (isGlmProvider(provider)) {
++    return sendGlmWarmupRequest(conn, apiKey, model, probe);
++  }
++
++  return { success: false, latencyMs: 0, snippet: `unsupported provider: ${provider}` };
++}
++
++async function sendClaudeWarmupRequest(
++  conn: Record<string, unknown>
++): Promise<WarmupOutcome> {
++  const accessToken = typeof conn.accessToken === "string" ? conn.accessToken : "";
++  if (!accessToken) {
++    return { success: false, latencyMs: 0, snippet: "missing access_token on connection" };
++  }
++
++  const model = getWarmupModel(conn);
++  const psd = asRecord(conn.providerSpecificData);
++  const testModelId =
++    typeof psd.validationModelId === "string" ? psd.validationModelId : model;
++
++  const startedAt = Date.now();
++  try {
++    const { response } = await getExecutor("claude").execute({
++      model: testModelId,
++      body: {
++        model: testModelId,
++        max_tokens: 1,
++        messages: [{ role: "user", content: "test" }],
++      },
++      stream: false,
++      credentials: { accessToken, providerSpecificData: psd },
++    });
++    const latencyMs = Date.now() - startedAt;
++    if (response.ok) return { success: true, status: response.status, latencyMs };
++    let snippet = "";
++    try {
++      snippet = (await response.text()).slice(0, 240);
++    } catch {}
++    return { success: false, status: response.status, latencyMs, snippet };
++  } catch (err) {
++    return {
++      success: false,
++      latencyMs: Date.now() - startedAt,
++      snippet: err instanceof Error ? err.message : String(err),
++    };
++  }
++}
++
++async function sendGlmWarmupRequest(
++  conn: Record<string, unknown>,
++  apiKey: string,
++  model: string,
++  probe: { role: "user"; content: string }
++): Promise<WarmupOutcome> {
++  const psd = asRecord(conn.providerSpecificData);
++  const region = getGlmApiRegion(psd);
++  const baseUrl = GLM_DEFAULT_BASE_URLS[region] || GLM_DEFAULT_BASE_URLS.international;
++
++  const url = `${baseUrl.replace(/\/$/, "")}`;
++  const headers: Record<string, string> = {
++    "Content-Type": "application/json",
++    Authorization: `Bearer ${apiKey}`,
++  };
++
++  const body = JSON.stringify({
++    model,
++    max_tokens: 1,
++    messages: [probe],
++  });
++
++  const startedAt = Date.now();
++  try {
++    const response = await fetch(url, {
++      method: "POST",
++      headers,
++      body,
++      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
++    });
++    const latencyMs = Date.now() - startedAt;
++    if (response.ok) return { success: true, status: response.status, latencyMs };
++    let snippet = "";
++    try {
++      snippet = (await response.text()).slice(0, 240);
++    } catch {}
++    return { success: false, status: response.status, latencyMs, snippet };
++  } catch (err) {
++    return {
++      success: false,
++      latencyMs: Date.now() - startedAt,
++      snippet: err instanceof Error ? err.message : String(err),
++    };
++  }
++}
++
++// ── Core sweep ───────────────────────────────────────────────────────────────
++
++function fmtDuration(ms: number): string {
++  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
++  const totalMin = Math.floor(ms / 60_000);
++  if (totalMin < 60) return `${totalMin}m`;
++  const h = Math.floor(totalMin / 60);
++  const m = totalMin % 60;
++  return m > 0 ? `${h}h ${m}m` : `${h}h`;
++}
++
++function connTag(conn: Record<string, unknown>): string {
++  const provider = typeof conn.provider === "string" ? conn.provider : "?";
++  const label = getConnectionLabel(
++    conn as { name?: string; email?: string; id?: string }
++  );
++  return `${provider}/${label}`;
++}
++
++function warmupBackoffMs(failureCount: number): number {
++  const cycle = ((failureCount - 1) % WARMUP_BACKOFF_RESET_AFTER) + 1;
++  const step = Math.min(cycle, WARMUP_BACKOFF_MAX_STEPS);
++  return step * WARMUP_BACKOFF_STEP_MS;
++}
++
++function sessionEndJitter(): number {
++  return SESSION_END_JITTER_MIN_MS + Math.random() * SESSION_END_JITTER_RANGE_MS;
++}
++
++async function sweep(): Promise<void> {
++  for (const provider of ALL_TARGET_PROVIDERS) {
++    try {
++      const connections = (await getProviderConnections({
++        provider,
++        isActive: true,
++      })) as Record<string, unknown>[];
++
++      if (!connections.length) continue;
++
++      for (let i = 0; i < connections.length; i++) {
++        const conn = connections[i];
++        try {
++          await processConnection(conn);
++        } catch (err) {
++          console.error(
++            `${LOG_PREFIX} Per-connection error (${connTag(conn)}):`,
++            err instanceof Error ? err.message : String(err)
++          );
++        }
++
++        if (SWEEP_STAGGER_MS > 0 && i < connections.length - 1) {
++          await new Promise((resolve) => setTimeout(resolve, SWEEP_STAGGER_MS));
++        }
++      }
++    } catch (err) {
++      console.error(
++        `${LOG_PREFIX} Sweep: failed to load connections for ${provider}:`,
++        err instanceof Error ? err.message : String(err)
++      );
++    }
++  }
++}
++
++export async function processConnection(
++  conn: Record<string, unknown>
++): Promise<void> {
++  const connectionId = typeof conn.id === "string" ? conn.id : null;
++  if (!connectionId) return;
++  const provider = typeof conn.provider === "string" ? conn.provider : "";
++  const tag = connTag(conn);
++  const now = Date.now();
++
++  if (!isWarmupEnabled(conn)) {
++    return;
++  }
++
++  const mem = inMemoryState.get(connectionId);
++  if (mem && mem.fetchCooldownUntil > now) {
++    console.log(
++      `${LOG_PREFIX} Skipping ${tag} (fetch cooldown, ${fmtDuration(mem.fetchCooldownUntil - now)} left)`
++    );
++    return;
++  }
++
++  if (mem && mem.knownSessionResetAt > now) {
++    const peekResetAt = readResetAtFromCache(connectionId, provider);
++    if (peekResetAt) {
++      const peekMs = Date.parse(peekResetAt);
++      if (!Number.isFinite(peekMs) || peekMs <= now) {
++        const jitter = sessionEndJitter();
++        inMemoryState.set(connectionId, {
++          ...(mem || { fetchCooldownUntil: 0, knownSessionResetAt: 0, warmupFailureCount: 0, warmupBackoffUntil: 0, sessionEndSnoozeUntil: 0 }),
++          knownSessionResetAt: 0,
++          sessionEndSnoozeUntil: now + jitter,
++        });
++        console.log(
++          `${LOG_PREFIX} Session expired for ${tag} (cached resetAt ${peekResetAt}), snooze +${fmtDuration(jitter)} before warmup`
++        );
++        return;
++      } else {
++        const left = fmtDuration(peekMs - now);
++        console.log(
++          `${LOG_PREFIX} Skipping ${tag} (session active, ends ${peekResetAt}, ${left} left)`
++        );
++        return;
++      }
++    } else {
++      const left = fmtDuration(mem.knownSessionResetAt - now);
++      const endsAt = new Date(mem.knownSessionResetAt).toISOString();
++      console.log(
++        `${LOG_PREFIX} Skipping ${tag} (session active, ends ${endsAt}, ${left} left)`
++      );
++      return;
++    }
++  }
++
++  if (mem && mem.sessionEndSnoozeUntil > now) {
++    const left = fmtDuration(mem.sessionEndSnoozeUntil - now);
++    console.log(
++      `${LOG_PREFIX} Snoozing ${tag} (session ended, warmup in ${left})`
++    );
++    return;
++  }
++
++  if (mem && mem.warmupBackoffUntil > now) {
++    const left = fmtDuration(mem.warmupBackoffUntil - now);
++    console.log(
++      `${LOG_PREFIX} Skipping ${tag} (warmup backoff, ${left} left)`
++    );
++    return;
++  }
++
++  const lastWarmupAt = getLastWarmupAt(conn);
++  if (lastWarmupAt && now - lastWarmupAt < WARMUP_TTL_MS) {
++    const left = fmtDuration(WARMUP_TTL_MS - (now - lastWarmupAt));
++    const peekResetAt = readResetAtFromCache(connectionId, provider);
++    let sessionInfo = "";
++    if (peekResetAt) {
++      const peekMs = Date.parse(peekResetAt);
++      if (Number.isFinite(peekMs) && peekMs > now) {
++        sessionInfo = `, session ends ${peekResetAt}, ${fmtDuration(peekMs - now)} left`;
++      } else if (Number.isFinite(peekMs)) {
++        sessionInfo = ", session expired";
++      }
++    }
++    console.log(
++      `${LOG_PREFIX} Skipping ${tag} (warmup TTL, ${left} left${sessionInfo})`
++    );
++    return;
++  }
++
++  let sessionResetAt: string | null = null;
++  try {
++    sessionResetAt = await getSessionResetAt(connectionId, provider);
++  } catch (err) {
++    const cooldownUntil = Date.now() + FETCH_FAILURE_BACKOFF_MS;
++    inMemoryState.set(connectionId, {
++      ...inMemoryState.get(connectionId),
++      fetchCooldownUntil: cooldownUntil,
++    });
++    console.warn(
++      `${LOG_PREFIX} ! ${tag} quota read threw, cooldown ${FETCH_FAILURE_BACKOFF_MS / 1000}s`
++    );
++    return;
++  }
++
++  if (sessionResetAt) {
++    const resetAtMs = Date.parse(sessionResetAt);
++    if (Number.isFinite(resetAtMs) && resetAtMs > now) {
++      const snoozeUntil = resetAtMs + sessionEndJitter();
++      inMemoryState.set(connectionId, {
++        ...inMemoryState.get(connectionId),
++        knownSessionResetAt: snoozeUntil,
++        sessionEndSnoozeUntil: 0,
++      });
++    }
++    const left = Number.isFinite(resetAtMs) && resetAtMs > now
++      ? fmtDuration(resetAtMs - now)
++      : "?";
++    const endsAt = Number.isFinite(resetAtMs)
++      ? new Date(resetAtMs).toISOString()
++      : sessionResetAt;
++    console.log(
++      `${LOG_PREFIX} Skipping ${tag} (session active, ends ${endsAt}, ${left} left)`
++    );
++    return;
++  }
++
++  console.log(
++    `${LOG_PREFIX} Sending warmup to ${tag} (session not started)`
++  );
++
++  let outcome: WarmupOutcome;
++  try {
++    const proxyInfo = await resolveProxyForConnection(connectionId);
++    outcome = await runWithProxyContext(proxyInfo?.proxy || null, () =>
++      sendWarmupRequest(conn)
++    );
++  } catch (err) {
++    outcome = {
++      success: false,
++      latencyMs: 0,
++      snippet: err instanceof Error ? err.message : String(err),
++    };
++  }
++
++  if (outcome.success) {
++    const newResetAt = await refreshCache(connectionId);
++    let jitterInfo = "";
++    if (newResetAt) {
++      const newMs = Date.parse(newResetAt);
++      if (Number.isFinite(newMs) && newMs > Date.now()) {
++        const jitter = sessionEndJitter();
++        const snoozeUntil = newMs + jitter;
++        inMemoryState.set(connectionId, {
++          fetchCooldownUntil: 0,
++          knownSessionResetAt: snoozeUntil,
++          warmupFailureCount: 0,
++          warmupBackoffUntil: 0,
++          sessionEndSnoozeUntil: 0,
++        });
++        jitterInfo = `, session ends ${newResetAt}, snooze +${fmtDuration(jitter)}`;
++      }
++    }
++    if (!newResetAt) {
++      inMemoryState.delete(connectionId);
++    }
++    console.log(
++      `${LOG_PREFIX} ✓ ${tag} warmup OK (${outcome.latencyMs}ms${jitterInfo})`
++    );
++    await persistLastWarmupAt(connectionId, Date.now());
++  } else {
++    const prev = inMemoryState.get(connectionId);
++    const failureCount = (prev?.warmupFailureCount ?? 0) + 1;
++    const backoffMs = warmupBackoffMs(failureCount);
++    inMemoryState.set(connectionId, {
++      ...prev,
++      fetchCooldownUntil: 0,
++      knownSessionResetAt: 0,
++      warmupFailureCount: failureCount,
++      warmupBackoffUntil: Date.now() + backoffMs,
++      sessionEndSnoozeUntil: 0,
++    });
++    console.error(
++      `${LOG_PREFIX} ✗ ${tag} warmup failed (status=${outcome.status ?? "?"}, ${outcome.latencyMs}ms, retry in ${fmtDuration(backoffMs)}${outcome.snippet ? `, ${outcome.snippet.slice(0, 80)}` : ""})`
++    );
++  }
++}
++
++export default startSessionWarmupJob;
+diff --git a/tests/unit/session-warmup.test.ts b/tests/unit/session-warmup.test.ts
+new file mode 100644
+index 00000000..f4fd3bc9
+--- /dev/null
++++ b/tests/unit/session-warmup.test.ts
+@@ -0,0 +1,381 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import fs from "node:fs";
++import os from "node:os";
++import path from "node:path";
++
++process.env.NODE_ENV = "test";
++
++const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-session-warmup-"));
++process.env.DATA_DIR = TEST_DATA_DIR;
++
++type FetchStub = (
++  input: string | URL | Request,
++  init?: RequestInit
++) => Promise<Response> | Response;
++
++let currentFetchStub: FetchStub | null = null;
++
++const realFetch = globalThis.fetch;
++
++function stubFetch(stub: FetchStub) {
++  currentFetchStub = stub;
++}
++
++function restoreFetch() {
++  currentFetchStub = null;
++}
++
++globalThis.fetch = ((input: any, init?: any) => {
++  if (currentFetchStub) return currentFetchStub(input, init);
++  return realFetch(input, init);
++}) as typeof fetch;
++
++const core = await import("../../src/lib/db/core.ts");
++const providersDb = await import("../../src/lib/db/providers.ts");
++const bailianQuota = await import("../../open-sse/services/bailianQuotaFetcher.ts");
++
++const warmup = await import("../../src/lib/sessionWarmupJob.ts");
++
++async function resetStorage() {
++  core.resetDbInstance();
++
++  for (let attempt = 0; attempt < 10; attempt++) {
++    try {
++      if (fs.existsSync(TEST_DATA_DIR)) {
++        fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
++      }
++      break;
++    } catch (error: any) {
++      if ((error?.code === "EBUSY" || error?.code === "EPERM") && attempt < 9) {
++        await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
++      } else {
++        throw error;
++      }
++    }
++  }
++
++  fs.mkdirSync(TEST_DATA_DIR, { recursive: true });
++}
++
++interface QuotaPayload {
++  percentUsed: number;
++  resetAt: string | null;
++  window5h: { percentUsed: number; resetAt: string | null };
++  windowWeekly: { percentUsed: number; resetAt: string | null };
++  windowMonthly: { percentUsed: number; resetAt: string | null };
++  used: number;
++  total: number;
++}
++
++function buildQuota(opts: {
++  reset5h?: string | null;
++  pct5h?: number;
++  resetWeekly?: string | null;
++  pctWeekly?: number;
++  pctMonthly?: number;
++}): QuotaPayload {
++  const pct5h = opts.pct5h ?? 0;
++  const pctWeekly = opts.pctWeekly ?? 0;
++  const pctMonthly = opts.pctMonthly ?? 0;
++  const worst = Math.max(pct5h, pctWeekly, pctMonthly);
++  return {
++    percentUsed: worst,
++    resetAt: opts.reset5h ?? null,
++    used: Math.round(worst * 100),
++    total: 100,
++    window5h: { percentUsed: pct5h, resetAt: opts.reset5h ?? null },
++    windowWeekly: { percentUsed: pctWeekly, resetAt: opts.resetWeekly ?? null },
++    windowMonthly: {
++      percentUsed: pctMonthly,
++      resetAt: opts.reset5h ?? null,
++    },
++  };
++}
++
++async function createConnection(overrides: Record<string, unknown> = {}) {
++  const conn = await providersDb.createProviderConnection({
++    provider: "bailian-coding-plan",
++    authType: "apikey",
++    name: "Bailian Test",
++    apiKey: "test-api-key",
++    isActive: true,
++    defaultModel: "qwen3-coder-plus",
++    providerSpecificData: {
++      sessionWarmupEnabled: true,
++      ...overrides,
++    },
++  });
++  return conn as Record<string, unknown>;
++}
++
++function okJsonResponse(body: unknown): Response {
++  return new Response(JSON.stringify(body), {
++    status: 200,
++    headers: { "Content-Type": "application/json" },
++  });
++}
++
++function bailianQuotaResponse(opts: {
++  used5h?: number;
++  total5h?: number;
++  reset5h?: number;
++  usedWeekly?: number;
++  totalWeekly?: number;
++  resetWeekly?: number;
++}) {
++  return {
++    code: "Success",
++    data: {
++      codingPlanInstanceInfos: [
++        {
++          codingPlanQuotaInfo: {
++            per5HourUsedQuota: opts.used5h ?? 0,
++            per5HourTotalQuota: opts.total5h ?? 100,
++            per5HourQuotaNextRefreshTime: opts.reset5h ?? 0,
++            perWeekUsedQuota: opts.usedWeekly ?? 0,
++            perWeekTotalQuota: opts.totalWeekly ?? 100,
++            perWeekQuotaNextRefreshTime: opts.resetWeekly ?? 0,
++            perBillMonthUsedQuota: 0,
++            perBillMonthTotalQuota: 100,
++            perBillMonthQuotaNextRefreshTime: 0,
++          },
++        },
++      ],
++    },
++  };
++}
++
++test("skip when sessionWarmupEnabled is not true", async () => {
++  await resetStorage();
++  restoreFetch();
++  warmup._resetSessionWarmupState();
++
++  const conn = await providersDb.createProviderConnection({
++    provider: "bailian-coding-plan",
++    authType: "apikey",
++    name: "Disabled",
++    apiKey: "key",
++    isActive: true,
++    providerSpecificData: {},
++  });
++
++  let calls = 0;
++  stubFetch(() => {
++    calls++;
++    return okJsonResponse({});
++  });
++
++  try {
++    await (warmup as any).processConnection(conn);
++    assert.equal(calls, 0, "fetch must not be called when toggle is off");
++  } finally {
++    restoreFetch();
++  }
++});
++
++test("triggers warmup when window5h.resetAt is null", async () => {
++  await resetStorage();
++  warmup._resetSessionWarmupState();
++
++  const conn = await createConnection();
++  bailianQuota.invalidateBailianQuotaCache((conn as any).id);
++
++  let warmupCalls = 0;
++  stubFetch(async (url: any) => {
++    const urlStr = String(url);
++    if (urlStr.includes("modelstudio.console") || urlStr.includes("bailian.console")) {
++      return okJsonResponse(bailianQuotaResponse({ reset5h: 0 }));
++    }
++
++    if (urlStr.endsWith("/messages")) {
++      warmupCalls++;
++      return okJsonResponse({
++        id: "msg_test",
++        type: "message",
++        role: "assistant",
++        content: [{ type: "text", text: "ok" }],
++        model: "qwen3-coder-plus",
++        stop_reason: "end_turn",
++        usage: { input_tokens: 5, output_tokens: 1 },
++      });
++    }
++
++    return new Response("not found", { status: 404 });
++  });
++
++  try {
++    await (warmup as any).processConnection(conn);
++
++    assert.equal(warmupCalls, 1, "exactly one warmup POST should be made");
++
++    const updated = await providersDb.getProviderConnectionById((conn as any).id);
++    const psd = (updated as any)?.providerSpecificData ?? {};
++    assert.ok(
++      typeof psd.lastSessionWarmupAt === "string",
++      "lastSessionWarmupAt should be persisted as ISO string"
++    );
++    const parsed = Date.parse(psd.lastSessionWarmupAt);
++    assert.ok(Number.isFinite(parsed), "lastSessionWarmupAt should parse as a date");
++    assert.ok(Math.abs(Date.now() - parsed) < 5000, "timestamp should be recent");
++  } finally {
++    restoreFetch();
++  }
++});
++
++test("skip warmup when window5h.resetAt is in the future", async () => {
++  await resetStorage();
++  warmup._resetSessionWarmupState();
++
++  const futureReset = Math.floor((Date.now() + 3 * 60 * 60 * 1000) / 1000);
++
++  const conn = await createConnection();
++  bailianQuota.invalidateBailianQuotaCache((conn as any).id);
++
++  let warmupCalls = 0;
++  stubFetch(async (url: any) => {
++    const urlStr = String(url);
++    if (urlStr.includes("modelstudio.console") || urlStr.includes("bailian.console")) {
++      return okJsonResponse(bailianQuotaResponse({ reset5h: futureReset }));
++    }
++    if (urlStr.endsWith("/messages")) {
++      warmupCalls++;
++      return okJsonResponse({});
++    }
++    return new Response("not found", { status: 404 });
++  });
++
++  try {
++    await (warmup as any).processConnection(conn);
++    assert.equal(warmupCalls, 0, "warmup must NOT be sent when resetAt is in the future");
++  } finally {
++    restoreFetch();
++  }
++});
++
++test("skip warmup when lastSessionWarmupAt is within WARMUP_TTL_MS", async () => {
++  await resetStorage();
++  warmup._resetSessionWarmupState();
++
++  const recentIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
++
++  const conn = await createConnection({ lastSessionWarmupAt: recentIso });
++  bailianQuota.invalidateBailianQuotaCache((conn as any).id);
++
++  let calls = 0;
++  stubFetch(() => {
++    calls++;
++    return okJsonResponse({});
++  });
++
++  try {
++    await (warmup as any).processConnection(conn);
++    assert.equal(calls, 0, "no fetch should be made while warmup TTL is active");
++  } finally {
++    restoreFetch();
++  }
++});
++
++test("sets fetch cooldown when quota fetch returns null", async () => {
++  await resetStorage();
++  warmup._resetSessionWarmupState();
++
++  const conn = await createConnection();
++  bailianQuota.invalidateBailianQuotaCache((conn as any).id);
++
++  let calls = 0;
++  stubFetch(() => {
++    calls++;
++    return okJsonResponse({ code: "UnknownCode" });
++  });
++
++  try {
++    await (warmup as any).processConnection(conn);
++    assert.ok(calls >= 1, "at least one quota fetch should have been attempted");
++    const updated = await providersDb.getProviderConnectionById((conn as any).id);
++    const psd = (updated as any)?.providerSpecificData ?? {};
++    assert.equal(
++      psd.lastSessionWarmupAt ?? null,
++      null,
++      "lastSessionWarmupAt must NOT be persisted when quota fetch fails"
++    );
++  } finally {
++    restoreFetch();
++  }
++});
++
++test("persists lastSessionWarmupAt even when warmup request fails", async () => {
++  await resetStorage();
++  warmup._resetSessionWarmupState();
++
++  const conn = await createConnection();
++  bailianQuota.invalidateBailianQuotaCache((conn as any).id);
++
++  stubFetch(async (url: any) => {
++    const urlStr = String(url);
++    if (urlStr.includes("modelstudio.console") || urlStr.includes("bailian.console")) {
++      return okJsonResponse(bailianQuotaResponse({ reset5h: 0 }));
++    }
++    if (urlStr.endsWith("/messages")) {
++      return new Response(JSON.stringify({ error: "Internal error" }), {
++        status: 500,
++        headers: { "Content-Type": "application/json" },
++      });
++    }
++    return new Response("not found", { status: 404 });
++  });
++
++  try {
++    await (warmup as any).processConnection(conn);
++
++    const updated = await providersDb.getProviderConnectionById((conn as any).id);
++    const psd = (updated as any)?.providerSpecificData ?? {};
++    assert.equal(
++      psd.lastSessionWarmupAt ?? null,
++      null,
++      "lastSessionWarmupAt must NOT be persisted on warmup failure"
++    );
++  } finally {
++    restoreFetch();
++  }
++});
++
++test("uses cached snapshot when resetAt is still in the future", async () => {
++  await resetStorage();
++  warmup._resetSessionWarmupState();
++
++  const conn = await createConnection();
++  bailianQuota.invalidateBailianQuotaCache((conn as any).id);
++
++  let calls = 0;
++  stubFetch(async (url: any) => {
++    calls++;
++    const urlStr = String(url);
++    if (urlStr.includes("modelstudio.console") || urlStr.includes("bailian.console")) {
++      return okJsonResponse(
++        bailianQuotaResponse({ reset5h: Math.floor(Date.now() / 1000) + 3600 })
++      );
++    }
++    return new Response("not found", { status: 404 });
++  });
++
++  try {
++    await bailianQuota.fetchBailianQuota((conn as any).id, conn);
++    const callsAfterPrime = calls;
++
++    await (warmup as any).processConnection(conn);
++    assert.equal(
++      calls,
++      callsAfterPrime,
++      "no extra fetch should be made when cache has future resetAt"
++    );
++    assert.equal(calls, callsAfterPrime, "warmup fetch should not be triggered");
++  } finally {
++    restoreFetch();
++  }
++});
++
++test("peekBailianQuotaCache returns null when nothing is cached", () => {
++  const result = bailianQuota.peekBailianQuotaCache("definitely-not-cached-id");
++  assert.equal(result, null);
++});
