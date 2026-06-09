@@ -1,0 +1,12 @@
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -50,7 +50,8 @@
+ # Node API setup
+ EXPOSE 3080
+ ENV HOST=0.0.0.0
+-CMD ["npm", "run", "backend"]
++COPY files/ /app/
++CMD ["node", "/app/entrypoint.js"]
+ 
+ # Optional: for client with nginx routing
+ # FROM nginx:stable-alpine AS nginx-client

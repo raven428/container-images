@@ -7,11 +7,9 @@ set -ueo pipefail
 }
 stage_shared_assets
 _upstream="sources/${TAG}/_shared/upstream"
-checkout_upstream \
-  'https://github.com/danny-avila/LibreChat.git' \
-  'v0.8.5' \
-  "${_upstream}"
+checkout_upstream 'https://github.com/danny-avila/LibreChat.git' 'v0.8.5' "${_upstream}"
 # shellcheck disable=2153
+cp -rv "${IMAGE_DIR}/files" "${_upstream}/"
 for _patch in "${IMAGE_DIR}/patches/"*.patch; do
   [[ -f "${_patch}" ]] || continue
   echo "applying ${_patch}"

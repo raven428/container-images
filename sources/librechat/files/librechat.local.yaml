@@ -1,0 +1,20 @@
+# cspell:ignore ZhipuAI Convo
+endpoints:
+  custom:
+    - name: "ZhipuAI"
+      apiKey: "user_provided"
+      baseURL: "https://api.z.ai/api/coding/paas/v4"
+      models:
+        default:
+          - "GLM-4.7-Air"
+          - "GLM-4.7"
+          - "GLM-5-Turbo"
+          - "GLM-5V-Turbo"
+          - "GLM-5.1"
+          - "GLM-5.2"
+        fetch: false
+      titleConvo: true
+      titleModel: "GLM-5.1"
+      summarize: false
+      summaryModel: "GLM-5.1"
+      modelDisplayLabel: "GLM"
