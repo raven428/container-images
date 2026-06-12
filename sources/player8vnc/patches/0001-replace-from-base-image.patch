@@ -1,0 +1,5 @@
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1 +1 @@
+-FROM mcp/playwright:latest
++FROM localhost/player8src:local
