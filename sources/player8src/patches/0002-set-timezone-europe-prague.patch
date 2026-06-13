@@ -1,0 +1,17 @@
+--- a/Dockerfile	2026-06-14 03:41:41.982993755 +0000
++++ b/Dockerfile	2026-06-14 03:43:06.312098734 +0000
+@@ -10,6 +10,14 @@
+ ARG PLAYWRIGHT_BROWSERS_PATH
+ ENV PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH}
+ 
++# Europe/Prague timezone: align container wall-clock and logs with expected local time.
++ENV TZ=Europe/Prague
++RUN apt-get update && \
++    apt-get install -y --no-install-recommends tzdata && \
++    ln -snf "/usr/share/zoneinfo/${TZ}" /etc/localtime && \
++    echo "${TZ}" > /etc/timezone && \
++    rm -rf /var/lib/apt/lists/*
++
+ # Set the working directory
+ WORKDIR /app
+ 

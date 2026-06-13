@@ -1,0 +1,155 @@
+diff -ruN a/Dockerfile b/Dockerfile
+--- a/Dockerfile	2026-06-14 05:33:51.235926642 +0000
++++ b/Dockerfile	2026-06-14 05:34:29.532785544 +0000
+@@ -13,10 +13,15 @@
+ # Set the working directory
+ WORKDIR /app
+ 
++# Patch script applied to playwright-core coreBundle.js right after npm ci
++# (see fix-session-survival.cjs for the rationale of the session-survival fix).
++COPY fix-session-survival.cjs /app/
++
+ RUN --mount=type=cache,target=/root/.npm,sharing=locked,id=npm-cache \
+     --mount=type=bind,source=package.json,target=package.json \
+     --mount=type=bind,source=package-lock.json,target=package-lock.json \
+   npm ci --omit=dev && \
++  node /app/fix-session-survival.cjs && \
+   # Install system dependencies for playwright
+   npx -y playwright-core install-deps chromium
+ 
+diff -ruN a/fix-session-survival.cjs b/fix-session-survival.cjs
+--- a/fix-session-survival.cjs	1970-01-01 00:00:00.000000000 +0000
++++ b/fix-session-survival.cjs	2026-06-14 05:34:13.933177086 +0000
+@@ -0,0 +1,132 @@
++#!/usr/bin/env node
++'use strict';
++// Patch playwright-core coreBundle.js to fix streamable-http session loss.
++// Root cause: startHeartbeat pings the client via server.ping(), which is only
++// deliverable over the standalone GET SSE stream. Clients (LibreChat, Opencode)
++// do not keep that stream open, so the ping is silently dropped, the 5s race
++// rejects and the server is closed -> session destroyed -> "Session not found".
++// Fix: stop starting the heartbeat for streamable-http and instead reap idle
++// sessions (no POST activity for PW_MCP_IDLE_TIMEOUT_MS, default 5 min) via an
++// explicit sweep, so live sessions survive pauses/GET-stream closure while
++// dead/abandoned sessions still free their browsers (prevents chrome leaks).
++// The idle timeout is configurable via PW_MCP_IDLE_TIMEOUT_MS (milliseconds).
++const fs = require('fs');
++const path = require('path');
++
++const file = process.argv[2] ||
++  path.join('node_modules', 'playwright-core', 'lib', 'coreBundle.js');
++let src = fs.readFileSync(file, 'utf8');
++const orig = src;
++
++function replaceOnce(label, needle, replacement) {
++  const first = src.indexOf(needle);
++  if (first === -1)
++    throw new Error(`patch: pattern not found: ${label}`);
++  if (src.indexOf(needle, first + 1) !== -1)
++    throw new Error(`patch: pattern not unique: ${label}`);
++  src = src.slice(0, first) + replacement + src.slice(first + needle.length);
++  console.error(`patch: applied ${label}`);
++}
++
++// 1) inject activity map + idle sweep after the streamable sessions map.
++// Idle threshold and sweep interval are configurable via env vars so production
++// keeps a 5-min default while tests can shrink it for fast turnaround.
++replaceOnce(
++  'idle-sweep',
++  '  const streamableSessions = /* @__PURE__ */ new Map();\n' +
++  '  httpServer.on("request", async (req, res) => {',
++  '  const streamableSessions = /* @__PURE__ */ new Map();\n' +
++  '  const streamableActivity = /* @__PURE__ */ new Map();\n' +
++  '  const _idleMs = Number(process.env.PW_MCP_IDLE_TIMEOUT_MS) || 3e5;\n' +
++  '  const _sweepMs = Math.max(5e3, Math.floor(_idleMs / 5));\n' +
++  '  const _idleSweep = setInterval(() => {\n' +
++  '    const now = Date.now();\n' +
++  '    const stale = [];\n' +
++  '    for (const [_pwIdleSid] of streamableSessions) {\n' +
++  '      const last = streamableActivity.get(_pwIdleSid);\n' +
++  '      if (last !== void 0 && now - last > _idleMs)\n' +
++  '        stale.push(_pwIdleSid);\n' +
++  '    }\n' +
++  '    for (const _pwIdleSid of stale) {\n' +
++  '      const t = streamableSessions.get(_pwIdleSid);\n' +
++  '      if (t) {\n' +
++  '        testDebug3(`idle close http session ${_pwIdleSid}`);\n' +
++  '        t.close();\n' +
++  '      }\n' +
++  '    }\n' +
++  '  }, _sweepMs);\n' +
++  '  httpServer.on("close", () => clearInterval(_idleSweep));\n' +
++  '  httpServer.on("request", async (req, res) => {',
++);
++
++// 2) pass activity map into handleStreamable
++replaceOnce(
++  'pass-activity',
++  '      await handleStreamable(serverBackendFactory, req, res, streamableSessions);',
++  '      await handleStreamable(serverBackendFactory, req, res, streamableSessions, streamableActivity);',
++);
++
++// 3) handleStreamable signature + touch activity on existing-session request
++replaceOnce(
++  'touch-activity',
++  'async function handleStreamable(serverBackendFactory, req, res, sessions) {\n' +
++  '  const sessionId = req.headers["mcp-session-id"];\n' +
++  '  if (sessionId) {\n' +
++  '    const transport = sessions.get(sessionId);\n' +
++  '    if (!transport) {\n' +
++  '      res.statusCode = 404;\n' +
++  '      res.end("Session not found");\n' +
++  '      return;\n' +
++  '    }\n' +
++  '    return await transport.handleRequest(req, res);',
++  'async function handleStreamable(serverBackendFactory, req, res, sessions, activity) {\n' +
++  '  const sessionId = req.headers["mcp-session-id"];\n' +
++  '  if (sessionId) {\n' +
++  '    const transport = sessions.get(sessionId);\n' +
++  '    if (!transport) {\n' +
++  '      res.statusCode = 404;\n' +
++  '      res.end("Session not found");\n' +
++  '      return;\n' +
++  '    }\n' +
++  '    if (activity)\n' +
++  '      activity.set(sessionId, Date.now());\n' +
++  '    return await transport.handleRequest(req, res);',
++);
++
++// 4) disable heartbeat, seed activity on init, clear activity on close
++replaceOnce(
++  'no-heartbeat',
++  '      onsessioninitialized: async (sessionId2) => {\n' +
++  '        testDebug3(`create http session`);\n' +
++  '        await connect(serverBackendFactory, transport, true);\n' +
++  '        sessions.set(sessionId2, transport);\n' +
++  '      }\n' +
++  '    });\n' +
++  '    transport.onclose = () => {\n' +
++  '      if (!transport.sessionId)\n' +
++  '        return;\n' +
++  '      sessions.delete(transport.sessionId);\n' +
++  '      testDebug3(`delete http session`);',
++  '      onsessioninitialized: async (sessionId2) => {\n' +
++  '        testDebug3(`create http session`);\n' +
++  '        await connect(serverBackendFactory, transport, false);\n' +
++  '        sessions.set(sessionId2, transport);\n' +
++  '        if (activity)\n' +
++  '          activity.set(sessionId2, Date.now());\n' +
++  '      }\n' +
++  '    });\n' +
++  '    transport.onclose = () => {\n' +
++  '      if (!transport.sessionId)\n' +
++  '        return;\n' +
++  '      sessions.delete(transport.sessionId);\n' +
++  '      if (activity)\n' +
++  '        activity.delete(transport.sessionId);\n' +
++  '      testDebug3(`delete http session`);',
++);
++
++if (src === orig) {
++  console.error('patch: no changes made (already patched?)');
++  process.exit(0);
++}
++fs.writeFileSync(file, src);
++console.error(`patch: wrote ${file}`);
