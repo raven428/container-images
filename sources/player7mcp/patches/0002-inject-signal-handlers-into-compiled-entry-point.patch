@@ -1,0 +1,18 @@
+--- a/packages/agent-infra/mcp-servers/browser/Dockerfile.http
++++ b/packages/agent-infra/mcp-servers/browser/Dockerfile.http
+@@ -47,7 +47,14 @@
+ RUN PUPPETEER_CACHE_DIR=/home/pptruser/.cache/puppeteer \
+   npx puppeteer browsers install chrome --install-deps
+ 
+-RUN npm i @agent-infra/mcp-server-browser@latest -g
++RUN npm i @agent-infra/mcp-server-browser@1.2.29 -g
++
++# mcp-server-browser ships no SIGTERM/SIGINT handler; as PID 1 the kernel
++# then ignores stop signals, so `podman stop` hangs until the SIGKILL
++# timeout. Patch the compiled entry point to exit on signal.
++COPY signal-handlers.patch /tmp/
++RUN cd "$(npm root -g)/@agent-infra/mcp-server-browser" && \
++    patch -p1 < /tmp/signal-handlers.patch
+ 
+ USER $PPTRUSER_UID
+ # Generate THIRD_PARTY_NOTICES using chrome --credits.

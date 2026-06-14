@@ -1,0 +1,9 @@
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -45143,3 +45143,6 @@
+ Object.defineProperty(exports, '__esModule', {
+     value: true
+ });
++
++process.on("SIGTERM",()=>process.exit(0));
++process.on("SIGINT",()=>process.exit(0));

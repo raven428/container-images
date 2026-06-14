@@ -1,0 +1,33 @@
+--- a/packages/agent-infra/mcp-servers/browser/Dockerfile.http
++++ b/packages/agent-infra/mcp-servers/browser/Dockerfile.http
+@@ -18,6 +18,14 @@
+     --no-install-recommends \
+     && rm -rf /var/lib/apt/lists/*
+ 
++# Europe/Prague timezone: align container wall-clock and logs with expected local time.
++ENV TZ=Europe/Prague
++RUN apt-get update && \
++    apt-get install -y --no-install-recommends tzdata && \
++    ln -snf "/usr/share/zoneinfo/${TZ}" /etc/localtime && \
++    echo "${TZ}" > /etc/timezone && \
++    rm -rf /var/lib/apt/lists/*
++
+ # Add pptruser.
+ RUN groupadd -r pptruser && useradd -u $PPTRUSER_UID -rm -g pptruser -G audio,video pptruser
+ 
+@@ -48,6 +56,14 @@
+ 
+ ENV NODE_ENV=production
+ 
++# Runtime-tunable viewport and upstream proxy; mcp-server-browser reads
++# these via CLI flags (no ENV support upstream), so ENTRYPOINT is shell-form.
++ENV SCREEN_WIDTH=1920
++ENV SCREEN_HEIGHT=1080
++ENV CHROME_PROXY_SERVER=
++
+ EXPOSE 8088
+ 
+-ENTRYPOINT ["mcp-server-browser", "--port", "8088"]
++ENTRYPOINT exec mcp-server-browser --port 8088 \
++  --viewport-size "${SCREEN_WIDTH},${SCREEN_HEIGHT}" \
++  ${CHROME_PROXY_SERVER:+--proxy-server "${CHROME_PROXY_SERVER}"}
