@@ -1,0 +1,123 @@
+--- a/src/services/browserService.ts
++++ b/src/services/browserService.ts
+@@ -61,6 +61,19 @@
+   }
+ 
+   /**
++   * Resolve viewport from CHROME_SCREEN_WIDTH / CHROME_SCREEN_HEIGHT env
++   * vars; falls back to a random value when unset or invalid.
++   */
++  private getViewport(): {width: number, height: number} {
++    const envW = Number(process.env.CHROME_SCREEN_WIDTH);
++    const envH = Number(process.env.CHROME_SCREEN_HEIGHT);
++    if (Number.isInteger(envW) && envW > 0 && Number.isInteger(envH) && envH > 0) {
++      return { width: envW, height: envH };
++    }
++    return this.getRandomViewport();
++  }
++
++  /**
+    * Setup anti-detection script to evade browser automation detection
+    */
+   private async setupAntiDetection(context: BrowserContext): Promise<void> {
+@@ -128,10 +141,47 @@
+   }
+ 
+   /**
++   * Resolve proxy configuration from CHROME_PROXY_SERVER / CHROME_NO_PROXY
++   * env vars. Supports http(s):// and socks5:// with optional credentials.
++   */
++  private getProxyConfig(): { proxy?: { server: string; username?: string; password?: string; bypass?: string } } {
++    const proxyServer = process.env.CHROME_PROXY_SERVER;
++    if (!proxyServer) {
++      return {};
++    }
++
++    let server = proxyServer;
++    let username: string | undefined;
++    let password: string | undefined;
++
++    try {
++      const url = new URL(proxyServer);
++      if (url.username) {
++        username = decodeURIComponent(url.username);
++      }
++      if (url.password) {
++        password = decodeURIComponent(url.password);
++      }
++      server = `${url.protocol}//${url.host}`;
++    } catch {
++      // URL parsing failed — pass the raw string as-is
++    }
++
++    const proxy: { server: string; username?: string; password?: string; bypass?: string } = { server };
++    if (username) proxy.username = username;
++    if (password) proxy.password = password;
++    const bypass = process.env.CHROME_NO_PROXY;
++    if (bypass) proxy.bypass = bypass;
++
++    logger.info(`[BrowserService] Using proxy: ${server}${username ? ' (with credentials)' : ''}`);
++    return { proxy };
++  }
++
++  /**
+    * Create a new stealth browser instance
+    */
+   public async createBrowser(): Promise<Browser> {
+-    const viewport = this.getRandomViewport();
++    const viewport = this.getViewport();
+ 
+     try {
+       return await chromium.launch({
+@@ -146,7 +196,8 @@
+           '--disable-infobars',
+           '--window-size=' + viewport.width + ',' + viewport.height,
+           '--disable-extensions'
+-        ]
++        ],
++        ...this.getProxyConfig(),
+       });
+     } catch (error: any) {
+       // Check if the error is related to missing browser installation
+@@ -180,7 +231,7 @@
+    * Create a new browser context with stealth configurations
+    */
+   public async createContext(browser: Browser): Promise<{ context: BrowserContext, viewport: {width: number, height: number} }> {
+-    const viewport = this.getRandomViewport();
++    const viewport = this.getViewport();
+     
+     const context = await browser.newContext({
+       javaScriptEnabled: true,
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -18,6 +18,14 @@
+ # Runtime stage
+ FROM --platform=$TARGETPLATFORM node:22-slim AS runner
+ 
++# Europe/Prague timezone: align container wall-clock and logs with expected local time.
++ENV TZ=Europe/Prague
++RUN apt-get update && \
++    apt-get install -y --no-install-recommends tzdata && \
++    ln -snf "/usr/share/zoneinfo/${TZ}" /etc/localtime && \
++    echo "${TZ}" > /etc/timezone && \
++    rm -rf /var/lib/apt/lists/*
++
+ # Install system dependencies required for runtime
+ RUN apt-get update && apt-get install -y \
+     wget \
+@@ -38,5 +46,14 @@
+ # Expose port
+ EXPOSE 3000
+ 
++# Runtime-tunable browser settings.
++# CHROME_PROXY_SERVER: e.g. socks5://user:pass@host:1080 or http://host:8080
++# CHROME_NO_PROXY: comma-separated bypass list (e.g. localhost,127.0.0.1)
++# CHROME_SCREEN_WIDTH / CHROME_SCREEN_HEIGHT: fixed viewport (default: random)
++ENV CHROME_PROXY_SERVER=
++ENV CHROME_NO_PROXY=
++ENV CHROME_SCREEN_WIDTH=
++ENV CHROME_SCREEN_HEIGHT=
++
+ # Startup command
+ CMD ["node", "build/index.js", "--log", "--transport=http", "--host=0.0.0.0", "--port=3000"] 
+\ No newline at end of file
