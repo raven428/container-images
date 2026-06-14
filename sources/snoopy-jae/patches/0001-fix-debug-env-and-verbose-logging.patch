@@ -1,0 +1,143 @@
+diff --git a/src/index.ts b/src/index.ts
+index 3966524..93cbde5 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -45,8 +45,10 @@ const argv = yargs(hideBin(process.argv))
+  * Main application entry point
+  */
+ async function main() {
+-  // Create logger
+-  const logger = createLogger(argv.debug, argv.transport);
++  // Create logger: honour both --debug CLI flag and DEBUG env variable,
++  // so that EnvironmentFile-based configuration works without changing CMD.
++  const debugEnabled = argv.debug || process.env.DEBUG === 'true';
++  const logger = createLogger(debugEnabled, argv.transport);
+   
+   try {
+     
+diff --git a/src/server.ts b/src/server.ts
+index b8367ff..2651728 100644
+--- a/src/server.ts
++++ b/src/server.ts
+@@ -23,7 +23,7 @@ export class SearXNGMCPServer {
+ 
+   constructor(config: Config, logger: Logger) {
+     this.logger = logger;
+-    this.searchTool = new SearXNGSearchTool(config);
++    this.searchTool = new SearXNGSearchTool(config, logger);
+ 
+     // Initialize MCP server
+     this.server = new Server(
+diff --git a/src/services/searxng-api.ts b/src/services/searxng-api.ts
+index 7109281..f1e1c51 100644
+--- a/src/services/searxng-api.ts
++++ b/src/services/searxng-api.ts
+@@ -3,6 +3,8 @@
+  * Provides interface to SearXNG search API with Basic Auth support
+  */
+ 
++import { Logger } from '../utils/logger.js';
++
+ /**
+  * Valid language codes supported by SearXNG
+  * Based on official SearXNG sxng_locales.py
+@@ -190,15 +192,18 @@ export class SearXNGApiClient {
+   private baseUrl: string;
+   private auth?: { username: string; password: string };
+   private timeout: number;
++  private logger?: Logger;
+ 
+   constructor(
+     baseUrl: string,
+     auth?: { username: string; password: string },
+-    timeout: number = 30000
++    timeout: number = 30000,
++    logger?: Logger
+   ) {
+     this.baseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+     this.auth = auth;
+     this.timeout = timeout;
++    this.logger = logger;
+   }
+ 
+   /**
+@@ -248,6 +253,8 @@ export class SearXNGApiClient {
+       const controller = new AbortController();
+       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+ 
++      this.logger?.debug(`Fetching search URL`, { url });
++
+       const response = await fetch(url, {
+         method: "GET",
+         headers: {
+@@ -260,14 +267,42 @@ export class SearXNGApiClient {
+ 
+       clearTimeout(timeoutId);
+ 
++      this.logger?.debug(`Got HTTP response`, {
++        url,
++        status: response.status,
++        statusText: response.statusText,
++        headers: Object.fromEntries(response.headers.entries()),
++      });
++
+       if (!response.ok) {
+-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
++        let responseBody = '';
++        try {
++          responseBody = await response.text();
++        } catch {
++          responseBody = '<failed to read body>';
++        }
++        this.logger?.error(`HTTP error from SearXNG`, {
++          url,
++          status: response.status,
++          statusText: response.statusText,
++          headers: Object.fromEntries(response.headers.entries()),
++          body: responseBody.slice(0, 2000),
++        });
++        throw new Error(
++          `HTTP ${response.status}: ${response.statusText}` +
++          (responseBody ? ` — body: ${responseBody.slice(0, 500)}` : '')
++        );
+       }
+ 
+       const data = (await response.json()) as SearchResult;
+       return data;
+     } catch (error) {
+       if (error instanceof Error) {
++        this.logger?.debug(`Search error detail`, {
++          url,
++          message: error.message,
++          name: error.name,
++        });
+         throw new Error(`Search failed for query "${query}": ${error.message}`);
+       }
+       throw new Error(`Search failed for query "${query}": Unknown error`);
+diff --git a/src/tools/searxng.ts b/src/tools/searxng.ts
+index e042531..b7c98ad 100644
+--- a/src/tools/searxng.ts
++++ b/src/tools/searxng.ts
+@@ -5,6 +5,7 @@
+ 
+ import { SearXNGApiClient, SearchOptions, MultiSearchResult } from '../services/searxng-api.js';
+ import { Config } from '../config/index.js';
++import { Logger } from '../utils/logger.js';
+ 
+ /**
+  * Simplified search result for MCP response
+@@ -54,10 +55,12 @@ export interface MultiSearchResponse {
+ export class SearXNGSearchTool {
+   private apiClient: SearXNGApiClient;
+ 
+-  constructor(config: Config) {
++  constructor(config: Config, logger?: Logger) {
+     this.apiClient = new SearXNGApiClient(
+       config.searxng.url,
+-      config.searxng.auth
++      config.searxng.auth,
++      30000,
++      logger
+     );
+   }
+ 
