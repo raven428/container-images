@@ -1,0 +1,16 @@
+#!/sbin/openrc-run
+# cspell:ignore openrc x11vnc supervise nopw rfbport
+
+description="x11vnc VNC server"
+
+supervisor="supervise-daemon"
+command="/usr/bin/x11vnc"
+command_args="-display :99 -forever -shared -nopw -rfbport 5900"
+respawn_delay=1
+
+output_log="/run/svc.log"
+error_log="/run/svc.log"
+
+depend() {
+  need xvfb
+}

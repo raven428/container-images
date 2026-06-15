@@ -3,9 +3,6 @@ FROM debian:trixie-slim
 COPY files /files
 RUN /files/install.sh
 ENV DISPLAY=:99
-ENV SCREEN_WIDTH=1920
-ENV SCREEN_HEIGHT=1080
-ENV SCREEN_DEPTH=24
 VOLUME ["/vault", "/config"]
 EXPOSE 6080
 ENTRYPOINT ["/entrypoint.sh"]

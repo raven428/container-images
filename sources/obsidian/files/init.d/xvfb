@@ -1,0 +1,17 @@
+#!/sbin/openrc-run
+# cspell:ignore openrc Xvfb supervise
+
+description="X Virtual Frame Buffer"
+
+supervisor="supervise-daemon"
+command="/usr/bin/Xvfb"
+command_args=":99 -screen 0 ${SCREEN_WIDTH:-1920}x${SCREEN_HEIGHT:-1080}x\
+${SCREEN_DEPTH:-24}"
+respawn_delay=1
+
+output_log="/run/svc.log"
+error_log="/run/svc.log"
+
+depend() {
+  use net
+}
