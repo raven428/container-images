@@ -21,6 +21,8 @@ jobs:
           submodules: true
       - name: define matrix
         id: define-matrix
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: |
           source _shared/_all/matrix.sh
           echo "images=${DIR_SON}" >> "${GITHUB_OUTPUT}"

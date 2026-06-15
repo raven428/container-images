@@ -23,6 +23,8 @@ jobs:
           submodules: true
       - name: define matrix
         id: define-matrix
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: |
           # Patterns of container names that produce an AppImage.
           # Add new entries here when a new AppImage-capable image appears.
