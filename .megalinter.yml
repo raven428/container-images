@@ -19,13 +19,18 @@ SPELL_CSPELL_PRE_COMMANDS:
   - command: |
       npm install --prefix /node-deps @cspell/dict-ru_ru @cspell/dict-software-terms
     cwd: root
-SPELL_CSPELL_FILTER_REGEX_EXCLUDE: "_shared/install/ansible/.+\\.diff|\
-  sources/opencode-ubuntu-22_04/files/.+\\.diff"
+SPELL_CSPELL_FILTER_REGEX_EXCLUDE: "\
+  _shared/install/ansible/.+\\.diff|\
+  sources/opencode-ubuntu-22_04/files/.+\\.diff|\
+  sources/obsidian/files/conf/.*"
 EDITORCONFIG_EDITORCONFIG_CHECKER_FILTER_REGEX_EXCLUDE: "\
   _shared/install/ansible/.+\\.diff|\
-  sources/opencode-ubuntu-22_04/files/.+\\.diff"
+  sources/opencode-ubuntu-22_04/files/.+\\.diff|\
+  sources/obsidian/files/conf/.*"
 JAVASCRIPT_STANDARD_FILTER_REGEX_EXCLUDE: "\
   sources/librechat/files/entrypoint\\.js"
+CSS_STYLELINT_FILTER_REGEX_EXCLUDE: "\
+  sources/obsidian/files/conf/.*"
 EDITORCONFIG_EDITORCONFIG_CHECKER_PRE_COMMANDS:
   - command: |
       cat <<EOF > /ec-custom.sh
