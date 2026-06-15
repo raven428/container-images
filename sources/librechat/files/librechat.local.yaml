@@ -18,3 +18,19 @@ endpoints:
       summarize: false
       summaryModel: "GLM-5.1"
       modelDisplayLabel: "GLM"
+
+mcpServers:
+  ozon:
+    type: stdio
+    command: "podman"
+    args:
+      - "run"
+      - "-i"
+      - "--rm"
+      - "--init"
+      - "--shm-size=1g"
+      - "--network=host"
+      - "--env=OZON_PROXY=${MCP_PROXY_URL}"
+      - "ghcr.io/raven428/container-images/mcp-ozon:latest"
+    initTimeout: 222222
+    timeout: 111111
