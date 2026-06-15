@@ -8,6 +8,7 @@ command="/usr/bin/fluxbox"
 command_args="-display :99"
 command_user="obsidian"
 respawn_delay=1
+respawn_max=0
 
 output_log="/run/svc.log"
 error_log="/run/svc.log"

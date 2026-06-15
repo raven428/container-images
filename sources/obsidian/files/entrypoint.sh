@@ -23,15 +23,28 @@ cat /run/svc.log &
 _cat_pid=$!
 
 _shutdown() {
-  openrc shutdown
+  # stop all openrc services gracefully, ignore non-zero exit
+  openrc shutdown || true
   kill "${_cat_pid}" 2>/dev/null || true
+  # kill the sleep background job so the main loop exits immediately
+  kill "${_sleep_pid}" 2>/dev/null || true
   exit 0
 }
 trap _shutdown TERM INT
 
+# seed /config with default xfce4/gtk configs on first run
+if [[ ! -f /config/.xdg-initialized ]]; then
+  cp -rn /etc/xdg-obsidian/. /config/
+  chown -R obsidian:obsidian /config
+  touch /config/.xdg-initialized
+fi
+
 openrc default
-# keep container alive – openrc exits after starting services
+# keep container alive – openrc exits after starting services;
+# sleep in background so TERM/INT interrupts wait() immediately
+_sleep_pid=0
 while true; do
   sleep 60 &
-  wait $!
+  _sleep_pid=$!
+  wait "${_sleep_pid}" || true
 done

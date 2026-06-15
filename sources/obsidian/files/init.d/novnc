@@ -7,6 +7,7 @@ supervisor="supervise-daemon"
 command="/usr/bin/websockify"
 command_args="--web /usr/share/novnc 6080 localhost:5900"
 respawn_delay=1
+respawn_max=0
 
 output_log="/run/svc.log"
 error_log="/run/svc.log"

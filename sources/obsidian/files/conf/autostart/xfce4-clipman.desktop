@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Clipman
+Comment=Clipboard manager
+Exec=xfce4-clipman
+Type=Application
+X-XFCE-Autostart-Override=true

@@ -1,0 +1,19 @@
+[org/mate/terminal/profiles/default]
+visible-name='Default'
+allow-bold=true
+use-theme-colors=false
+foreground-color='#D3D7CF'
+background-color='#000000'
+bold-color='#000000'
+bold-color-same-as-fg=true
+background-type='transparent'
+background-darkness=0.84788670979261149
+use-custom-default-size=true
+default-size-columns=144
+default-size-rows=38
+scrollback-unlimited=true
+scrollbar-position='hidden'
+palette='#000000:#AA0000:#00AA00:#AA5500:#0000AA:#AA00AA:#00AAAA:#AAAAAA:#555555:#FF5555:#55FF55:#FFFF55:#5555FF:#FF55FF:#55FFFF:#FFFFFF'
+font='DejaVu Sans Mono 11'
+use-system-font=false
+cursor-blink-mode='off'

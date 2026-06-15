@@ -4,10 +4,10 @@
 description="Obsidian note-taking app"
 
 supervisor="supervise-daemon"
-command="/usr/bin/obsidian"
-command_args="--no-sandbox --disable-gpu-sandbox /vault"
+command="/usr/local/bin/obsidian-launch.sh"
 command_user="obsidian"
-respawn_delay=1
+respawn_delay=2
+respawn_max=0
 
 output_log="/run/svc.log"
 error_log="/run/svc.log"
@@ -15,7 +15,8 @@ error_log="/run/svc.log"
 export DISPLAY=":99"
 export HOME="/home/obsidian"
 export XDG_CONFIG_HOME="/config"
+export XDG_RUNTIME_DIR="/run/user/1000"
 
 depend() {
-  need fluxbox
+  need xfce
 }
