@@ -13,6 +13,9 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
   TAG=${IMAGE_DIR//sources\//}
   echo
   echo "pushing [${TAG}] from [${IMAGE_DIR}] dir…"
+  eval "$(_build_vars_shunts "${IMAGE_DIR}/vars.sh")"
+  # shellcheck disable=2034
+  PUSHING=1
   # shellcheck source=/dev/null
   source "${IMAGE_DIR}/vars.sh"
   current_date="$(/usr/bin/env date '+%Y%m%d')"

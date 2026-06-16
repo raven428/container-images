@@ -12,7 +12,7 @@ _upstream="sources/${TAG}/_shared/upstream"
 checkout_upstream 'https://github.com/microsoft/playwright-mcp.git' 'v0.0.76' \
   "${_upstream}"
 # shellcheck disable=2153
-for _patch in "${IMAGE_DIR}/patches/"*.patch; do
+[[ -z "${PUSHING:-}" ]] && for _patch in "${IMAGE_DIR}/patches/"*.patch; do
   [[ -f "${_patch}" ]] || continue
   echo "applying ${_patch}"
   patch -d "${_upstream}" -p1 <"${_patch}"
