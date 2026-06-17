@@ -1,0 +1,7 @@
+--- a/src/Greymond/xfwm4/themerc
++++ b/src/Greymond/xfwm4/themerc
+@@ -7,3 +7,4 @@
+ title_vertical_offset_active=1
+ title_vertical_offset_inactive=1
+ frame_border_top=4
++inactive_color_1=#808080

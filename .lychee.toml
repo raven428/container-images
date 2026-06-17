@@ -10,3 +10,7 @@ retry_wait_time = 10
 [hosts."github.com"]
 concurrency = 1
 request_interval = "2s"
+
+[hosts."docs.ansible.com"]
+concurrency = 1
+request_interval = "2s"
