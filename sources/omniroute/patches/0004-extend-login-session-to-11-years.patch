@@ -1,8 +1,6 @@
-diff --git a/src/types/global.d.ts b/src/types/global.d.ts
-index 11111111..22222222 100644
 --- a/src/types/global.d.ts
 +++ b/src/types/global.d.ts
-@@ -10,6 +10,7 @@ declare namespace NodeJS {
+@@ -10,6 +10,7 @@
      JWT_SECRET?: string;
      INITIAL_PASSWORD?: string;
      AUTH_COOKIE_SECURE?: string;
@@ -10,11 +8,9 @@ index 11111111..22222222 100644
      API_KEY_SECRET?: string;
      CLOUD_URL?: string;
      BASE_URL?: string;
-diff --git a/src/lib/env/runtimeEnv.ts b/src/lib/env/runtimeEnv.ts
-index 11111111..22222222 100644
 --- a/src/lib/env/runtimeEnv.ts
 +++ b/src/lib/env/runtimeEnv.ts
-@@ -60,6 +60,7 @@ export const webRuntimeEnvSchema = z.object({
+@@ -59,6 +59,7 @@
    DATA_DIR: optionalTrimmedString,
    JWT_SECRET: optionalTrimmedString,
    API_KEY_SECRET: optionalTrimmedString,
@@ -22,12 +18,9 @@ index 11111111..22222222 100644
    INITIAL_PASSWORD: optionalTrimmedString,
    AUTH_COOKIE_SECURE: optionalBooleanEnv,
    PRICING_SYNC_ENABLED: optionalBooleanEnv,
-diff --git a/src/app/api/auth/login/route.ts b/src/app/api/auth/login/route.ts
-index 11111111..22222222 100644
 --- a/src/app/api/auth/login/route.ts
 +++ b/src/app/api/auth/login/route.ts
-@@ -20,8 +20,17 @@ if (!process.env.JWT_SECRET) {
- function getJwtSecret(): Uint8Array {
+@@ -21,6 +21,24 @@
    return new TextEncoder().encode(process.env.JWT_SECRET || "");
  }
  
@@ -40,24 +33,38 @@ index 11111111..22222222 100644
 +  return SESSION_TTL_DEFAULT;
 +}
 +
++function resolveSessionTtlSeconds(): number {
++  const ttl = resolveSessionTtl();
++  const match = SESSION_TTL_RE.exec(ttl)!;
++  const multipliers: Record<string, number> = {
++    s: 1, m: 60, h: 3600, d: 86400, w: 604800, y: 31536000,
++  };
++  return parseInt(match[1], 10) * multipliers[match[2]];
++}
++
  // Test seam for cookie store injection without affecting runtime behavior.
  export const authRouteInternals = {
    getCookieStore: cookies,
- };
-@@ -120,7 +128,7 @@ export async function POST(request) {
-
+@@ -120,7 +138,7 @@
+ 
        const token = await new SignJWT({ authenticated: true })
          .setProtectedHeader({ alg: "HS256" })
 -        .setExpirationTime("30d")
 +        .setExpirationTime(resolveSessionTtl())
          .sign(getJwtSecret());
-
+ 
        const cookieStore = await authRouteInternals.getCookieStore();
-diff --git a/src/server/authz/pipeline.ts b/src/server/authz/pipeline.ts
-index 11111111..22222222 100644
+@@ -129,6 +147,7 @@
+         secure: useSecureCookie,
+         sameSite: "lax",
+         path: "/",
++        maxAge: resolveSessionTtlSeconds(),
+       });
+ 
+       logAuditEvent({
 --- a/src/server/authz/pipeline.ts
 +++ b/src/server/authz/pipeline.ts
-@@ -102,6 +102,24 @@ function shouldUseSecureCookie(request: NextRequest): boolean {
+@@ -101,6 +101,24 @@
    return forwardedProto === "https" || request.nextUrl.protocol === "https:";
  }
  
@@ -82,7 +89,8 @@ index 11111111..22222222 100644
  async function refreshDashboardSessionIfNeeded(
    response: NextResponse,
    request: NextRequest
-@@ -119,7 +135,7 @@ async function refreshDashboardSessionIfNeeded(
+@@ -117,12 +135,12 @@
+     if (!exp) return;
  
      const now = Math.floor(Date.now() / 1000);
 -    const refreshWindowSeconds = 7 * 24 * 60 * 60;
@@ -94,3 +102,13 @@ index 11111111..22222222 100644
 -      .setExpirationTime("30d")
 +      .setExpirationTime(resolveSessionTtl())
        .sign(secret);
+ 
+     response.cookies.set("auth_token", freshToken, {
+@@ -130,6 +148,7 @@
+       secure: shouldUseSecureCookie(request),
+       sameSite: "lax",
+       path: "/",
++      maxAge: resolveSessionTtlSeconds(),
+     });
+   } catch (error) {
+     console.error("[Authz] JWT auto-refresh failed:", error);
