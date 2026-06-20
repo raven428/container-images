@@ -1,5 +1,21 @@
+diff --git a/Dockerfile b/Dockerfile
+index 13fef0c..5da1a28 100644
 --- a/Dockerfile
 +++ b/Dockerfile
-@@ -1 +1 @@
+@@ -1,4 +1,4 @@
 -FROM mcp/playwright:latest
 +FROM localhost/player8src:local
+ 
+ USER root
+ 
+@@ -57,10 +57,4 @@ RUN mkdir -p /ms-playwright && chown -R pwuser:pwuser /app /home/pwuser /ms-play
+ # Switch to non-root user
+ USER pwuser
+ 
+-# Expose ports:
+-# 3080 - MCP SSE server
+-# 5900 - VNC server (internal, used by noVNC)
+-# 6080 - noVNC web interface
+-EXPOSE 3080 5900 6080
+-
+ ENTRYPOINT ["/entrypoint.sh"]
