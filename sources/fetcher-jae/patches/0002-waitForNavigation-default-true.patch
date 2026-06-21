@@ -1,0 +1,54 @@
+--- a/src/tools/fetchUrl.ts
++++ b/src/tools/fetchUrl.ts
+@@ -47,7 +47,7 @@
+       waitForNavigation: {
+         type: "boolean",
+         description:
+-          "Whether to wait for additional navigation after initial page load (useful for sites with anti-bot verification), default is false",
++          "Whether to wait for additional navigation after initial page load (useful for sites with anti-bot verification), default is true",
+       },
+       navigationTimeout: {
+         type: "number",
+@@ -96,7 +96,7 @@
+     extractContent: args?.extractContent !== false,
+     maxLength: Number(args?.maxLength) || 0,
+     returnHtml: args?.returnHtml === true,
+-    waitForNavigation: args?.waitForNavigation === true,
++    waitForNavigation: args?.waitForNavigation ?? (process.env.WAIT_FOR_NAVIGATION !== 'false'),
+     navigationTimeout: Number(args?.navigationTimeout) || 10000,
+     disableMedia: args?.disableMedia !== false,
+     debug: args?.debug,
+--- a/src/tools/fetchUrls.ts
++++ b/src/tools/fetchUrls.ts
+@@ -49,7 +49,7 @@
+       waitForNavigation: {
+         type: "boolean",
+         description:
+-          "Whether to wait for additional navigation after initial page load (useful for sites with anti-bot verification), default is false",
++          "Whether to wait for additional navigation after initial page load (useful for sites with anti-bot verification), default is true",
+       },
+       navigationTimeout: {
+         type: "number",
+@@ -97,7 +97,7 @@
+     extractContent: args?.extractContent !== false,
+     maxLength: Number(args?.maxLength) || 0,
+     returnHtml: args?.returnHtml === true,
+-    waitForNavigation: args?.waitForNavigation === true,
++    waitForNavigation: args?.waitForNavigation ?? (process.env.WAIT_FOR_NAVIGATION !== 'false'),
+     navigationTimeout: Number(args?.navigationTimeout) || 10000,
+     disableMedia: args?.disableMedia !== false,
+     debug: args?.debug,
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -38,5 +38,9 @@
+ # Expose port
+ EXPOSE 3000
+ 
++# Set to 'false' to disable waiting for additional navigation after page load.
++# By default navigation wait is enabled (helps with anti-bot redirects).
++ENV WAIT_FOR_NAVIGATION=true
++
+ # Startup command
+-CMD ["node", "build/index.js", "--log", "--transport=http", "--host=0.0.0.0", "--port=3000"] 
+\ No newline at end of file
++CMD ["node", "build/index.js", "--log", "--transport=http", "--host=0.0.0.0", "--port=3000"]
