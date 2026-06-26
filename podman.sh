@@ -23,3 +23,14 @@ https://downloadcontent.opensuse.org/repositories/home:/alvistack/${ID}_${VERSIO
 /" >/etc/apt/sources.list.d/alvistack.list
 apt-get update -y
 apt-get install -y --no-install-recommends podman podman-netavark passt uidmap
+# In alvistack repo podman 6.0 buildah now pulls containers-storage as a hard
+# dependency, which ships /usr/share/containers/storage.conf with an active
+# graphroot=/var/lib/containers/storage applied to rootless too. That breaks
+# unprivileged builds with "mkdir /var/lib/containers/storage: permission
+# denied". Shadow the shipped config with a minimal /etc override so rootless
+# falls back to $HOME/.local/share/containers/storage and rootful keeps system
+# defaults. Existing custom configs are preserved.
+[[ ! -e /etc/containers/storage.conf ]] && cat <<'EOF' >/etc/containers/storage.conf
+[storage]
+driver = "overlay"
+EOF
