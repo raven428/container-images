@@ -1,0 +1,125 @@
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,4 +1,13 @@
+ ARG PYTHON_VERSION=3.12-slim-bullseye
++FROM python:${PYTHON_VERSION} AS test
++
++WORKDIR /app
++
++COPY . /app
++RUN pip install --no-cache-dir /app[test]
++ENV AI_REVIEW_CONFIG_FILE_YAML=./ai_review/tests/configs/config-test.yaml
++RUN python -m pytest --tb=short && touch /tmp/tests-passed
++
+ FROM python:${PYTHON_VERSION}
+ 
+ WORKDIR /app
+@@ -9,5 +18,6 @@
+ RUN git config --global --add safe.directory '*'
+ RUN git config --global core.quotepath false
+ 
+-ARG AI_REVIEW_VERSION
+-RUN pip install --no-cache-dir xai-review==${AI_REVIEW_VERSION}
+\ No newline at end of file
++COPY --from=test /tmp/tests-passed /tmp/tests-passed
++COPY . /app
++RUN pip install --no-cache-dir /app
+--- a/ai_review/libs/logger.py
++++ b/ai_review/libs/logger.py
+@@ -9,7 +9,7 @@
+ 
+ logger.remove()
+ logger.add(
+-    sink=lambda msg: print(msg, end=""),
++    sink=lambda msg: print(msg, end="", flush=True),
+     format=settings.logger.format,
+     level=settings.logger.level,
+ )
+--- a/ai_review/services/diff/renderers.py
++++ b/ai_review/services/diff/renderers.py
+@@ -135,12 +135,12 @@
+         for line in hunk.lines:
+             if line.type is DiffLineType.ADDED:
+                 if include_added:
+-                    lines_out.append(f"+{new_no}: {line.content}{marker_for_line(DiffLineType.ADDED)}")
++                    lines_out.append(f"+{new_no}: {line.content}")
+                 new_no += 1
+ 
+             elif line.type is DiffLineType.REMOVED:
+                 if include_removed:
+-                    lines_out.append(f"-{old_no}: {line.content}{marker_for_line(DiffLineType.REMOVED)}")
++                    lines_out.append(f"-{old_no}: {line.content}")
+                 old_no += 1
+ 
+             else:
+--- a/ai_review/tests/suites/services/diff/test_renderers.py
++++ b/ai_review/tests/suites/services/diff/test_renderers.py
+@@ -105,9 +105,9 @@
+     out = renderers.build_full_file_diff(sample_diff_file)
+     assert out == (
+         " 1: keep A\n"
+-        "-2: remove me # removed\n"
++        "-2: remove me\n"
+         " 2: keep B\n"
+-        "+3: added me # added"
++        "+3: added me"
+     )
+ 
+ 
+@@ -118,7 +118,7 @@
+     Should render only added lines.
+     """
+     out = renderers.build_only_added(sample_diff_file)
+-    assert out == "+3: added me # added"
++    assert out == "+3: added me"
+ 
+ 
+ def test_build_only_removed(sample_diff_file: DiffFile) -> None:
+@@ -126,7 +126,7 @@
+     Should render only removed lines.
+     """
+     out = renderers.build_only_removed(sample_diff_file)
+-    assert out == "-2: remove me # removed"
++    assert out == "-2: remove me"
+ 
+ 
+ def test_build_added_and_removed(sample_diff_file: DiffFile) -> None:
+@@ -134,7 +134,7 @@
+     Should render both removed and added lines, in hunk order.
+     """
+     out = renderers.build_added_and_removed(sample_diff_file)
+-    assert out == "-2: remove me # removed\n+3: added me # added"
++    assert out == "-2: remove me\n+3: added me"
+ 
+ 
+ # ---------- tests: *_WITH_CONTEXT ----------
+@@ -144,7 +144,7 @@
+     Should render added lines plus unchanged context lines within ±1.
+     """
+     out = renderers.build_only_added_with_context(sample_diff_file, context=1)
+-    assert out == " 2: keep B\n+3: added me # added"
++    assert out == " 2: keep B\n+3: added me"
+ 
+ 
+ def test_build_only_removed_with_context(sample_diff_file: DiffFile) -> None:
+@@ -152,7 +152,7 @@
+     Should render removed lines plus unchanged context lines within ±1.
+     """
+     out = renderers.build_only_removed_with_context(sample_diff_file, context=1)
+-    assert out == " 1: keep A\n-2: remove me # removed\n 2: keep B"
++    assert out == " 1: keep A\n-2: remove me\n 2: keep B"
+ 
+ 
+ def test_build_added_and_removed_with_context(sample_diff_file: DiffFile) -> None:
+@@ -162,9 +162,9 @@
+     out = renderers.build_added_and_removed_with_context(sample_diff_file, context=1)
+     assert out == (
+         " 1: keep A\n"
+-        "-2: remove me # removed\n"
++        "-2: remove me\n"
+         " 2: keep B\n"
+-        "+3: added me # added"
++        "+3: added me"
+     )
+ 
+ 

@@ -1,0 +1,174 @@
+--- a/ai_review/libs/config/prompt.py
++++ b/ai_review/libs/config/prompt.py
+@@ -1,22 +1,45 @@
+ from functools import cached_property
++import importlib.metadata
+ from pathlib import Path
+ 
+-from pydantic import BaseModel, FilePath, Field
++from pydantic import BaseModel, Field
+ 
+ from ai_review.libs.resources import load_resource
+ 
+ 
+-def resolve_prompt_files(files: list[FilePath] | None, default_file: str) -> list[Path]:
+-    return files or [
+-        load_resource(
++def _resolve_prompt_path(path: Path) -> Path:
++    if path.exists():
++        return path
++    try:
++        resource = load_resource(
+             package="ai_review.prompts",
+-            filename=default_file,
+-            fallback=f"ai_review/prompts/{default_file}"
++            filename=path.name,
++            fallback=f"ai_review/prompts/{path.name}"
+         )
+-    ]
++        if resource.exists():
++            return resource
++    except importlib.metadata.PackageNotFoundError:
++        pass
++    raise FileNotFoundError(
++        f"Prompt file not found on disk and not in package defaults: {path}"
++    )
++
++
++def resolve_prompt_files(files: list[Path] | None, default_file: str) -> list[Path]:
++    if files is None:
++        return [
++            load_resource(
++                package="ai_review.prompts",
++                filename=default_file,
++                fallback=f"ai_review/prompts/{default_file}"
++            )
++        ]
++    return [_resolve_prompt_path(f) for f in files]
+ 
+ 
+-def resolve_system_prompt_files(files: list[FilePath] | None, include: bool, default_file: str) -> list[Path]:
++def resolve_system_prompt_files(
++    files: list[Path] | None, include: bool, default_file: str
++) -> list[Path]:
+     global_files = [
+         load_resource(
+             package="ai_review.prompts",
+@@ -24,14 +47,12 @@
+             fallback=f"ai_review/prompts/{default_file}"
+         )
+     ]
+-
+     if files is None:
+         return global_files
+-
++    resolved = [_resolve_prompt_path(f) for f in files]
+     if include:
+-        return global_files + files
+-
+-    return files
++        return global_files + resolved
++    return resolved
+ 
+ 
+ class PromptConfig(BaseModel):
+@@ -40,20 +61,20 @@
+     context_placeholder: str = "<<{value}>>"
+ 
+     # --- Prompts ---
+-    agent_prompt_files: list[FilePath] | None = None
+-    inline_prompt_files: list[FilePath] | None = None
+-    context_prompt_files: list[FilePath] | None = None
+-    summary_prompt_files: list[FilePath] | None = None
+-    inline_reply_prompt_files: list[FilePath] | None = None
+-    summary_reply_prompt_files: list[FilePath] | None = None
++    agent_prompt_files: list[Path] | None = None
++    inline_prompt_files: list[Path] | None = None
++    context_prompt_files: list[Path] | None = None
++    summary_prompt_files: list[Path] | None = None
++    inline_reply_prompt_files: list[Path] | None = None
++    summary_reply_prompt_files: list[Path] | None = None
+ 
+     # --- System Prompts ---
+-    system_agent_prompt_files: list[FilePath] | None = None
+-    system_inline_prompt_files: list[FilePath] | None = None
+-    system_context_prompt_files: list[FilePath] | None = None
+-    system_summary_prompt_files: list[FilePath] | None = None
+-    system_inline_reply_prompt_files: list[FilePath] | None = None
+-    system_summary_reply_prompt_files: list[FilePath] | None = None
++    system_agent_prompt_files: list[Path] | None = None
++    system_inline_prompt_files: list[Path] | None = None
++    system_context_prompt_files: list[Path] | None = None
++    system_summary_prompt_files: list[Path] | None = None
++    system_inline_reply_prompt_files: list[Path] | None = None
++    system_summary_reply_prompt_files: list[Path] | None = None
+ 
+     # --- Include System Prompts ---
+     include_agent_system_prompts: bool = True
+--- a/ai_review/tests/suites/libs/config/test_prompt.py
++++ b/ai_review/tests/suites/libs/config/test_prompt.py
+@@ -9,10 +9,48 @@
+ 
+ def test_resolve_prompt_files_returns_given_list(tmp_path: Path):
+     dummy_file = tmp_path / "file.md"
++    dummy_file.write_text("DUMMY")
+     result = resolve_prompt_files([dummy_file], "default_inline.md")
+     assert result == [dummy_file]
+ 
+ 
++def test_resolve_prompt_files_fallback_to_package_default(
++    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
++):
++    dummy_default = tmp_path / "default_inline.md"
++    dummy_default.write_text("PKG_DEFAULT")
++    monkeypatch.setattr(
++        "ai_review.libs.config.prompt.load_resource", lambda **_: dummy_default
++    )
++    result = resolve_prompt_files(
++        [Path("./prompts/default_inline.md")], "default_inline.md"
++    )
++    assert result == [dummy_default]
++
++
++def test_resolve_prompt_files_mixed_existing_and_fallback(
++    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
++):
++    custom_file = tmp_path / "custom.md"
++    custom_file.write_text("CUSTOM")
++    pkg_default = tmp_path / "default_inline.md"
++    pkg_default.write_text("PKG")
++    monkeypatch.setattr(
++        "ai_review.libs.config.prompt.load_resource", lambda **_: pkg_default
++    )
++    result = resolve_prompt_files(
++        [Path("./prompts/default_inline.md"), custom_file], "default_inline.md"
++    )
++    assert result == [pkg_default, custom_file]
++
++
++def test_resolve_prompt_files_raises_on_missing_non_default(tmp_path: Path):
++    with pytest.raises(FileNotFoundError):
++        resolve_prompt_files(
++            [tmp_path / "totally_custom_missing.md"], "default_inline.md"
++        )
++
++
+ def test_resolve_prompt_files_loads_default_when_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+     dummy_file = tmp_path / "inline_default.md"
+     dummy_file.write_text("INLINE_DEFAULT")
+@@ -37,6 +75,7 @@
+     global_file = tmp_path / "global.md"
+     global_file.write_text("GLOBAL")
+     custom_file = tmp_path / "custom.md"
++    custom_file.write_text("CUSTOM")
+     monkeypatch.setattr("ai_review.libs.config.prompt.load_resource", lambda **_: global_file)
+ 
+     result = resolve_system_prompt_files([custom_file], include=True, default_file="default_system_inline.md")
+@@ -47,6 +86,7 @@
+     global_file = tmp_path / "global.md"
+     global_file.write_text("GLOBAL")
+     custom_file = tmp_path / "custom.md"
++    custom_file.write_text("CUSTOM")
+     monkeypatch.setattr("ai_review.libs.config.prompt.load_resource", lambda **_: global_file)
+ 
+     result = resolve_system_prompt_files([custom_file], include=False, default_file="default_system_inline.md")
