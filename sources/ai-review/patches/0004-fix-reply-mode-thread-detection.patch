@@ -1,0 +1,221 @@
+--- a/ai_review/services/review/gateway/review_comment_gateway.py
++++ b/ai_review/services/review/gateway/review_comment_gateway.py
+@@ -20,18 +20,28 @@
+ 
+     async def get_inline_threads(self) -> list[ReviewThreadSchema]:
+         threads = await self.vcs.get_inline_threads()
++        inline_tags = (settings.review.inline_tag, settings.review.inline_reply_tag)
+         inline_threads = [
+             thread for thread in threads
+-            if any(settings.review.inline_reply_tag in comment.body for comment in thread.comments)
++            if thread.comments
++            and any(any(tag in c.body for tag in inline_tags) for c in thread.comments)
++            and not any(tag in thread.comments[-1].body for tag in inline_tags)
+         ]
+         logger.info(f"Detected {len(inline_threads)}/{len(threads)} AI inline threads")
+         return inline_threads
+ 
+     async def get_summary_threads(self) -> list[ReviewThreadSchema]:
+         threads = await self.vcs.get_general_threads()
++        summary_tags = (
++            settings.review.summary_tag,
++            settings.review.summary_reply_tag,
++            settings.review.inline_fallback_tag,
++        )
+         summary_threads = [
+             thread for thread in threads
+-            if any(settings.review.summary_reply_tag in comment.body for comment in thread.comments)
++            if thread.comments
++            and any(any(tag in c.body for tag in summary_tags) for c in thread.comments)
++            and not any(tag in thread.comments[-1].body for tag in summary_tags)
+         ]
+         logger.info(f"Detected {len(summary_threads)}/{len(threads)} AI summary threads")
+         return summary_threads
+--- a/ai_review/services/vcs/gitlab/client.py
++++ b/ai_review/services/vcs/gitlab/client.py
+@@ -232,10 +232,13 @@
+                         kind=ThreadKind.INLINE,
+                         file=position.new_path if position else None,
+                         line=position.new_line if position else None,
+-                        comments=[
+-                            get_review_comment_from_gitlab_note(note, discussion)
+-                            for note in discussion.notes
+-                        ],
++                        comments=sorted(
++                            [
++                                get_review_comment_from_gitlab_note(note, discussion)
++                                for note in discussion.notes
++                            ],
++                            key=lambda c: (0, int(c.id)) if str(c.id).isdigit() else (1, str(c.id)),
++                        ),
+                     )
+                 )
+ 
+--- a/ai_review/tests/suites/services/review/gateway/test_review_comment_gateway.py
++++ b/ai_review/tests/suites/services/review/gateway/test_review_comment_gateway.py
+@@ -14,23 +14,47 @@
+ # === INLINE THREADS ===
+ 
+ @pytest.mark.asyncio
+-async def test_get_inline_threads_filters_by_tag(
++async def test_get_inline_threads_includes_when_human_replied_last(
+         fake_vcs_client: FakeVCSClient,
+         review_comment_gateway: ReviewCommentGateway,
+ ):
+-    """Should return only threads containing AI inline tags."""
++    """Should include thread when last comment is from human after AI inline tag."""
+     threads = [
+         ReviewThreadSchema(
+             id="1",
+             kind=ThreadKind.INLINE,
+             file="a.py",
+-            comments=[ReviewCommentSchema(id="1", body=f"Hello {settings.review.inline_reply_tag}")]
++            comments=[
++                ReviewCommentSchema(id="1", body=f"AI comment {settings.review.inline_tag}"),
++                ReviewCommentSchema(id="2", body="Human reply, no tag"),
++            ]
+         ),
++    ]
++    fake_vcs_client.responses["get_inline_threads"] = threads
++
++    result = await review_comment_gateway.get_inline_threads()
++
++    assert len(result) == 1
++    assert result[0].id == "1"
++    assert any(call[0] == "get_inline_threads" for call in fake_vcs_client.calls)
++
++
++@pytest.mark.asyncio
++async def test_get_inline_threads_includes_when_human_replied_after_ai_reply(
++        fake_vcs_client: FakeVCSClient,
++        review_comment_gateway: ReviewCommentGateway,
++):
++    """Should include thread on subsequent human reply after AI inline reply tag."""
++    threads = [
+         ReviewThreadSchema(
+             id="2",
+             kind=ThreadKind.INLINE,
+             file="b.py",
+-            comments=[ReviewCommentSchema(id="2", body="No AI tag here")]
++            comments=[
++                ReviewCommentSchema(id="1", body=f"AI {settings.review.inline_tag}"),
++                ReviewCommentSchema(id="2", body=f"AI {settings.review.inline_reply_tag}"),
++                ReviewCommentSchema(id="3", body="New human reply"),
++            ]
+         ),
+     ]
+     fake_vcs_client.responses["get_inline_threads"] = threads
+@@ -38,26 +62,74 @@
+     result = await review_comment_gateway.get_inline_threads()
+ 
+     assert len(result) == 1
+-    assert result[0].id == "1"
+-    assert any(call[0] == "get_inline_threads" for call in fake_vcs_client.calls)
++    assert result[0].id == "2"
+ 
+ 
+ @pytest.mark.asyncio
+-async def test_get_summary_threads_filters_by_tag(
++async def test_get_inline_threads_excludes_when_ai_last(
+         fake_vcs_client: FakeVCSClient,
+         review_comment_gateway: ReviewCommentGateway,
+ ):
+-    """Should return only threads containing AI summary tags."""
++    """Should exclude thread when last comment is AI (no new human reply)."""
+     threads = [
+         ReviewThreadSchema(
+-            id="10",
+-            kind=ThreadKind.SUMMARY,
+-            comments=[ReviewCommentSchema(id="1", body=f"AI {settings.review.summary_reply_tag}")]
++            id="1",
++            kind=ThreadKind.INLINE,
++            file="a.py",
++            comments=[ReviewCommentSchema(id="1", body=f"AI comment {settings.review.inline_tag}")],
+         ),
+         ReviewThreadSchema(
+-            id="11",
++            id="2",
++            kind=ThreadKind.INLINE,
++            file="b.py",
++            comments=[
++                ReviewCommentSchema(id="2", body=f"AI {settings.review.inline_tag}"),
++                ReviewCommentSchema(id="3", body=f"AI reply {settings.review.inline_reply_tag}"),
++            ],
++        ),
++    ]
++    fake_vcs_client.responses["get_inline_threads"] = threads
++
++    result = await review_comment_gateway.get_inline_threads()
++
++    assert result == []
++
++
++@pytest.mark.asyncio
++async def test_get_inline_threads_excludes_threads_without_ai_tags(
++        fake_vcs_client: FakeVCSClient,
++        review_comment_gateway: ReviewCommentGateway,
++):
++    """Should exclude threads that never had AI participation."""
++    threads = [
++        ReviewThreadSchema(
++            id="9",
++            kind=ThreadKind.INLINE,
++            file="c.py",
++            comments=[ReviewCommentSchema(id="1", body="Pure human discussion")],
++        ),
++    ]
++    fake_vcs_client.responses["get_inline_threads"] = threads
++
++    result = await review_comment_gateway.get_inline_threads()
++
++    assert result == []
++
++
++@pytest.mark.asyncio
++async def test_get_summary_threads_includes_when_human_replied_last(
++        fake_vcs_client: FakeVCSClient,
++        review_comment_gateway: ReviewCommentGateway,
++):
++    """Should include summary thread when human replied after AI summary tag."""
++    threads = [
++        ReviewThreadSchema(
++            id="10",
+             kind=ThreadKind.SUMMARY,
+-            comments=[ReviewCommentSchema(id="2", body="No tags here")]
++            comments=[
++                ReviewCommentSchema(id="1", body=f"AI {settings.review.summary_tag}"),
++                ReviewCommentSchema(id="2", body="Human follow-up"),
++            ]
+         ),
+     ]
+     fake_vcs_client.responses["get_general_threads"] = threads
+@@ -69,6 +141,29 @@
+     assert any(call[0] == "get_general_threads" for call in fake_vcs_client.calls)
+ 
+ 
++@pytest.mark.asyncio
++async def test_get_summary_threads_excludes_when_ai_last(
++        fake_vcs_client: FakeVCSClient,
++        review_comment_gateway: ReviewCommentGateway,
++):
++    """Should exclude summary thread when last comment is AI."""
++    threads = [
++        ReviewThreadSchema(
++            id="11",
++            kind=ThreadKind.SUMMARY,
++            comments=[
++                ReviewCommentSchema(id="1", body=f"AI {settings.review.summary_tag}"),
++                ReviewCommentSchema(id="2", body=f"AI reply {settings.review.summary_reply_tag}"),
++            ],
++        ),
++    ]
++    fake_vcs_client.responses["get_general_threads"] = threads
++
++    result = await review_comment_gateway.get_summary_threads()
++
++    assert result == []
++
++
+ # === GET INLINE COMMENTS ===
+ 
+ @pytest.mark.asyncio
