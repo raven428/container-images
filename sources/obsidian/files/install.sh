@@ -9,7 +9,7 @@ set -xueo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends xvfb x11vnc novnc websockify openrc bc gawk \
-  xfce4  mate-terminal xfwm4 xfconf xfce4-session xfdesktop4 xfce4-panel dbus dbus-x11 \
+  xfce4 mate-terminal xfwm4 xfconf xfce4-session xfdesktop4 xfce4-panel dbus dbus-x11 \
   at-spi2-core fastfetch awf-gtk3 awf-gtk4 sudo wget ca-certificates libasound2t64 \
   libdbus-1-3 xfce4-whiskermenu-plugin xfce4-eyes-plugin xfce4-xkb-plugin xfce4-notifyd \
   xfce4-clipman-plugin gtk2-engines dconf-cli xfce4-terminal
