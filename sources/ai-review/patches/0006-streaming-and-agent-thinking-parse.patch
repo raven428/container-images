@@ -1,0 +1,2636 @@
+--- a/ai_review/clients/azure_openai/client.py
++++ b/ai_review/clients/azure_openai/client.py
+@@ -1,3 +1,5 @@
++from collections.abc import AsyncIterator
++
+ from httpx import Response, AsyncHTTPTransport, AsyncClient, QueryParams
+ 
+ from ai_review.clients.azure_openai.schema import (
+@@ -10,6 +12,7 @@
+ from ai_review.libs.http.client import HTTPClient
+ from ai_review.libs.http.event_hooks.logger import LoggerEventHook
+ from ai_review.libs.http.handlers import HTTPClientError, handle_http_error
++from ai_review.libs.http.sse import ChatChunkSchema, parse_openai_sse
+ from ai_review.libs.http.transports.retry import RetryTransport
+ from ai_review.libs.logger import get_logger
+ 
+@@ -33,6 +36,20 @@
+         response = await self.chat_api(request)
+         return AzureOpenAIChatResponseSchema.model_validate_json(response.text)
+ 
++    async def chat_stream(self, request: AzureOpenAIChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        stream_request = request.model_copy(update={"stream": True})
++        query = AzureOpenAIChatQuerySchema(api_version=settings.llm.http_client.api_version)
++        url = (
++            f"/openai/deployments/{settings.llm.meta.model}/chat/completions"
++            f"?{QueryParams(**query.model_dump(by_alias=True))}"
++        )
++        lines = self.stream_post(
++            url,
++            json=stream_request.model_dump(exclude_none=True),
++        )
++        async for chunk in parse_openai_sse(lines):
++            yield chunk
++
+ 
+ def get_azure_openai_http_client() -> AzureOpenAIHTTPClient:
+     logger = get_logger("AZURE_OPENAI_HTTP_CLIENT")
+--- a/ai_review/clients/azure_openai/schema.py
++++ b/ai_review/clients/azure_openai/schema.py
+@@ -32,6 +32,7 @@
+ 
+ 
+ class AzureOpenAIChatRequestSchema(BaseModel):
++    stream: bool = False
+     messages: list[AzureOpenAIMessage]
+     max_tokens: int | None = None
+     temperature: float | None = None
+--- a/ai_review/clients/azure_openai/types.py
++++ b/ai_review/clients/azure_openai/types.py
+@@ -1,8 +1,13 @@
+ from typing import Protocol
++from collections.abc import AsyncIterator
+ 
+ from ai_review.clients.azure_openai.schema import AzureOpenAIChatRequestSchema, AzureOpenAIChatResponseSchema
++from ai_review.libs.http.sse import ChatChunkSchema
+ 
+ 
+ class AzureOpenAIHTTPClientProtocol(Protocol):
+     async def chat(self, request: AzureOpenAIChatRequestSchema) -> AzureOpenAIChatResponseSchema:
+         ...
++
++    def chat_stream(self, request: AzureOpenAIChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        ...
+--- a/ai_review/clients/claude/client.py
++++ b/ai_review/clients/claude/client.py
+@@ -1,3 +1,5 @@
++from collections.abc import AsyncIterator
++
+ from httpx import AsyncClient, Response, AsyncHTTPTransport
+ 
+ from ai_review.clients.claude.schema import ClaudeChatRequestSchema, ClaudeChatResponseSchema
+@@ -6,6 +8,7 @@
+ from ai_review.libs.http.client import HTTPClient
+ from ai_review.libs.http.event_hooks.logger import LoggerEventHook
+ from ai_review.libs.http.handlers import HTTPClientError, handle_http_error
++from ai_review.libs.http.sse import ChatChunkSchema, parse_claude_sse
+ from ai_review.libs.http.transports.retry import RetryTransport
+ from ai_review.libs.logger import get_logger
+ 
+@@ -23,6 +26,15 @@
+         response = await self.chat_api(request)
+         return ClaudeChatResponseSchema.model_validate_json(response.text)
+ 
++    async def chat_stream(self, request: ClaudeChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        stream_request = request.model_copy(update={"stream": True})
++        lines = self.stream_post(
++            "/v1/messages",
++            json=stream_request.model_dump(exclude_none=True),
++        )
++        async for chunk in parse_claude_sse(lines):
++            yield chunk
++
+ 
+ def get_claude_http_client() -> ClaudeHTTPClient:
+     logger = get_logger("CLAUDE_HTTP_CLIENT")
+--- a/ai_review/clients/claude/schema.py
++++ b/ai_review/clients/claude/schema.py
+@@ -10,6 +10,7 @@
+ 
+ class ClaudeChatRequestSchema(BaseModel):
+     model: str
++    stream: bool = False
+     system: str | None = None
+     messages: list[ClaudeMessageSchema]
+     max_tokens: int | None = None
+--- a/ai_review/clients/claude/types.py
++++ b/ai_review/clients/claude/types.py
+@@ -1,8 +1,13 @@
+ from typing import Protocol
++from collections.abc import AsyncIterator
+ 
+ from ai_review.clients.claude.schema import ClaudeChatRequestSchema, ClaudeChatResponseSchema
++from ai_review.libs.http.sse import ChatChunkSchema
+ 
+ 
+ class ClaudeHTTPClientProtocol(Protocol):
+     async def chat(self, request: ClaudeChatRequestSchema) -> ClaudeChatResponseSchema:
+         ...
++
++    def chat_stream(self, request: ClaudeChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        ...
+--- a/ai_review/clients/gemini/client.py
++++ b/ai_review/clients/gemini/client.py
+@@ -1,3 +1,5 @@
++from collections.abc import AsyncIterator
++
+ from httpx import Response, AsyncHTTPTransport, AsyncClient
+ 
+ from ai_review.clients.gemini.schema import GeminiChatRequestSchema, GeminiChatResponseSchema
+@@ -6,6 +8,7 @@
+ from ai_review.libs.http.client import HTTPClient
+ from ai_review.libs.http.event_hooks.logger import LoggerEventHook
+ from ai_review.libs.http.handlers import HTTPClientError, handle_http_error
++from ai_review.libs.http.sse import ChatChunkSchema, parse_gemini_sse
+ from ai_review.libs.http.transports.retry import RetryTransport
+ from ai_review.libs.logger import get_logger
+ 
+@@ -27,6 +30,16 @@
+         response = await self.chat_api(request)
+         return GeminiChatResponseSchema.model_validate_json(response.text)
+ 
++    async def chat_stream(self, request: GeminiChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        stream_request = request.model_copy(update={"stream": True})
++        meta = settings.llm.meta
++        lines = self.stream_post(
++            f"/v1beta/models/{meta.model}:streamGenerateContent?alt=sse",
++            json=stream_request.model_dump(exclude_none=True),
++        )
++        async for chunk in parse_gemini_sse(lines):
++            yield chunk
++
+ 
+ def get_gemini_http_client() -> GeminiHTTPClient:
+     logger = get_logger("GEMINI_HTTP_CLIENT")
+--- a/ai_review/clients/gemini/schema.py
++++ b/ai_review/clients/gemini/schema.py
+@@ -52,6 +52,7 @@
+ class GeminiChatRequestSchema(BaseModel):
+     model_config = ConfigDict(populate_by_name=True)
+ 
++    stream: bool = False
+     contents: list[GeminiContentSchema]
+     generation_config: GeminiGenerationConfigSchema | None = Field(
+         alias="generationConfig",
+--- a/ai_review/clients/gemini/types.py
++++ b/ai_review/clients/gemini/types.py
+@@ -1,8 +1,13 @@
+ from typing import Protocol
++from collections.abc import AsyncIterator
+ 
+ from ai_review.clients.gemini.schema import GeminiChatRequestSchema, GeminiChatResponseSchema
++from ai_review.libs.http.sse import ChatChunkSchema
+ 
+ 
+ class GeminiHTTPClientProtocol(Protocol):
+     async def chat(self, request: GeminiChatRequestSchema) -> GeminiChatResponseSchema:
+         ...
++
++    def chat_stream(self, request: GeminiChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        ...
+--- a/ai_review/clients/ollama/client.py
++++ b/ai_review/clients/ollama/client.py
+@@ -1,3 +1,5 @@
++from collections.abc import AsyncIterator
++
+ from httpx import AsyncClient, Response, AsyncHTTPTransport
+ 
+ from ai_review.clients.ollama.schema import OllamaChatRequestSchema, OllamaChatResponseSchema
+@@ -6,6 +8,7 @@
+ from ai_review.libs.http.client import HTTPClient
+ from ai_review.libs.http.event_hooks.logger import LoggerEventHook
+ from ai_review.libs.http.handlers import HTTPClientError, handle_http_error
++from ai_review.libs.http.sse import ChatChunkSchema, parse_ollama_ndjson
+ from ai_review.libs.http.transports.retry import RetryTransport
+ from ai_review.libs.logger import get_logger
+ 
+@@ -23,6 +26,15 @@
+         response = await self.chat_api(request)
+         return OllamaChatResponseSchema.model_validate_json(response.text)
+ 
++    async def chat_stream(self, request: OllamaChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        stream_request = request.model_copy(update={"stream": True})
++        lines = self.stream_post(
++            "/api/chat",
++            json=stream_request.model_dump(exclude_none=True),
++        )
++        async for chunk in parse_ollama_ndjson(lines):
++            yield chunk
++
+ 
+ def get_ollama_http_client() -> OllamaHTTPClient:
+     logger = get_logger("OLLAMA_HTTP_CLIENT")
+--- a/ai_review/clients/ollama/types.py
++++ b/ai_review/clients/ollama/types.py
+@@ -1,8 +1,13 @@
+ from typing import Protocol
++from collections.abc import AsyncIterator
+ 
+ from ai_review.clients.ollama.schema import OllamaChatRequestSchema, OllamaChatResponseSchema
++from ai_review.libs.http.sse import ChatChunkSchema
+ 
+ 
+ class OllamaHTTPClientProtocol(Protocol):
+     async def chat(self, request: OllamaChatRequestSchema) -> OllamaChatResponseSchema:
+         ...
++
++    def chat_stream(self, request: OllamaChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        ...
+--- a/ai_review/clients/openai/v1/client.py
++++ b/ai_review/clients/openai/v1/client.py
+@@ -1,3 +1,5 @@
++from collections.abc import AsyncIterator
++
+ from httpx import Response, AsyncHTTPTransport, AsyncClient
+ 
+ from ai_review.clients.openai.v1.schema import OpenAIChatRequestSchema, OpenAIChatResponseSchema
+@@ -6,6 +8,7 @@
+ from ai_review.libs.http.client import HTTPClient
+ from ai_review.libs.http.event_hooks.logger import LoggerEventHook
+ from ai_review.libs.http.handlers import HTTPClientError, handle_http_error
++from ai_review.libs.http.sse import ChatChunkSchema, parse_openai_sse
+ from ai_review.libs.http.transports.retry import RetryTransport
+ from ai_review.libs.logger import get_logger
+ 
+@@ -23,6 +26,15 @@
+         response = await self.chat_api(request)
+         return OpenAIChatResponseSchema.model_validate_json(response.text)
+ 
++    async def chat_stream(self, request: OpenAIChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        stream_request = request.model_copy(update={"stream": True})
++        lines = self.stream_post(
++            "/chat/completions",
++            json=stream_request.model_dump(exclude_none=True),
++        )
++        async for chunk in parse_openai_sse(lines):
++            yield chunk
++
+ 
+ def get_openai_v1_http_client() -> OpenAIV1HTTPClient:
+     logger = get_logger("OPENAI_V1_HTTP_CLIENT")
+--- a/ai_review/clients/openai/v1/types.py
++++ b/ai_review/clients/openai/v1/types.py
+@@ -1,8 +1,13 @@
+ from typing import Protocol
++from collections.abc import AsyncIterator
+ 
+ from ai_review.clients.openai.v1.schema import OpenAIChatRequestSchema, OpenAIChatResponseSchema
++from ai_review.libs.http.sse import ChatChunkSchema
+ 
+ 
+ class OpenAIV1HTTPClientProtocol(Protocol):
+     async def chat(self, request: OpenAIChatRequestSchema) -> OpenAIChatResponseSchema:
+         ...
++
++    def chat_stream(self, request: OpenAIChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        ...
+--- a/ai_review/clients/openai/v2/client.py
++++ b/ai_review/clients/openai/v2/client.py
+@@ -1,3 +1,5 @@
++from collections.abc import AsyncIterator
++
+ from httpx import Response, AsyncClient, AsyncHTTPTransport
+ 
+ from ai_review.clients.openai.v2.schema import (
+@@ -9,6 +11,7 @@
+ from ai_review.libs.http.client import HTTPClient
+ from ai_review.libs.http.event_hooks.logger import LoggerEventHook
+ from ai_review.libs.http.handlers import HTTPClientError, handle_http_error
++from ai_review.libs.http.sse import ChatChunkSchema, parse_openai_v2_sse
+ from ai_review.libs.http.transports.retry import RetryTransport
+ from ai_review.libs.logger import get_logger
+ 
+@@ -26,6 +29,15 @@
+         response = await self.chat_api(request)
+         return OpenAIResponsesResponseSchema.model_validate_json(response.text)
+ 
++    async def chat_stream(self, request: OpenAIResponsesRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        stream_request = request.model_copy(update={"stream": True})
++        lines = self.stream_post(
++            "/responses",
++            json=stream_request.model_dump(exclude_none=True),
++        )
++        async for chunk in parse_openai_v2_sse(lines):
++            yield chunk
++
+ 
+ def get_openai_v2_http_client() -> OpenAIV2HTTPClient:
+     logger = get_logger("OPENAI_V2_HTTP_CLIENT")
+--- a/ai_review/clients/openai/v2/types.py
++++ b/ai_review/clients/openai/v2/types.py
+@@ -1,11 +1,16 @@
+ from typing import Protocol
++from collections.abc import AsyncIterator
+ 
+ from ai_review.clients.openai.v2.schema import (
+     OpenAIResponsesRequestSchema,
+     OpenAIResponsesResponseSchema
+ )
++from ai_review.libs.http.sse import ChatChunkSchema
+ 
+ 
+ class OpenAIV2HTTPClientProtocol(Protocol):
+     async def chat(self, request: OpenAIResponsesRequestSchema) -> OpenAIResponsesResponseSchema:
+         ...
++
++    def chat_stream(self, request: OpenAIResponsesRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        ...
+--- a/ai_review/clients/openrouter/client.py
++++ b/ai_review/clients/openrouter/client.py
+@@ -1,3 +1,5 @@
++from collections.abc import AsyncIterator
++
+ from httpx import AsyncClient, Response, AsyncHTTPTransport
+ 
+ from ai_review.clients.openrouter.schema import OpenRouterChatRequestSchema, OpenRouterChatResponseSchema
+@@ -6,6 +8,7 @@
+ from ai_review.libs.http.client import HTTPClient
+ from ai_review.libs.http.event_hooks.logger import LoggerEventHook
+ from ai_review.libs.http.handlers import HTTPClientError, handle_http_error
++from ai_review.libs.http.sse import ChatChunkSchema, parse_openai_sse
+ from ai_review.libs.http.transports.retry import RetryTransport
+ from ai_review.libs.logger import get_logger
+ 
+@@ -23,6 +26,15 @@
+         response = await self.chat_api(request)
+         return OpenRouterChatResponseSchema.model_validate_json(response.text)
+ 
++    async def chat_stream(self, request: OpenRouterChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        stream_request = request.model_copy(update={"stream": True})
++        lines = self.stream_post(
++            "/chat/completions",
++            json=stream_request.model_dump(exclude_none=True),
++        )
++        async for chunk in parse_openai_sse(lines):
++            yield chunk
++
+ 
+ def get_openrouter_http_client() -> OpenRouterHTTPClient:
+     logger = get_logger("OPENROUTER_HTTP_CLIENT")
+--- a/ai_review/clients/openrouter/schema.py
++++ b/ai_review/clients/openrouter/schema.py
+@@ -20,6 +20,7 @@
+ 
+ class OpenRouterChatRequestSchema(BaseModel):
+     model: str
++    stream: bool = False
+     messages: list[OpenRouterMessageSchema]
+     max_tokens: int | None = None
+     temperature: float | None = None
+--- a/ai_review/clients/openrouter/types.py
++++ b/ai_review/clients/openrouter/types.py
+@@ -1,11 +1,16 @@
+ from typing import Protocol
++from collections.abc import AsyncIterator
+ 
+ from ai_review.clients.openrouter.schema import (
+     OpenRouterChatRequestSchema,
+     OpenRouterChatResponseSchema
+ )
++from ai_review.libs.http.sse import ChatChunkSchema
+ 
+ 
+ class OpenRouterHTTPClientProtocol(Protocol):
+     async def chat(self, request: OpenRouterChatRequestSchema) -> OpenRouterChatResponseSchema:
+         ...
++
++    def chat_stream(self, request: OpenRouterChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        ...
+--- a/ai_review/libs/config/llm/meta.py
++++ b/ai_review/libs/config/llm/meta.py
+@@ -5,3 +5,10 @@
+     model: str
+     max_tokens: int | None = Field(default=None, ge=1)
+     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
++    stream: bool = False
++    stream_log_progress: bool = True
++    stream_log_chunk_chars: int = Field(default=240, ge=1)
++    # Heartbeat cadence when nothing arrives from the model — prevents the
++    # "silent for 3 minutes" impression when the model is thinking hard or
++    # when reasoning-only chunks accumulate below the progress threshold.
++    stream_log_heartbeat_seconds: float = Field(default=12.0, gt=0.0)
+--- a/ai_review/libs/http/client.py
++++ b/ai_review/libs/http/client.py
+@@ -1,6 +1,7 @@
+ from typing import Any
++from collections.abc import AsyncIterator
+ 
+-from httpx import AsyncClient, Response, QueryParams
++from httpx import AsyncClient, Headers, Response, QueryParams
+ from httpx._types import HeaderTypes, RequestContent
+ 
+ 
+@@ -29,3 +30,32 @@
+ 
+     async def delete(self, url: str) -> Response:
+         return await self.client.delete(url=url)
++
++    async def stream_post(
++            self,
++            url: str,
++            *,
++            json: Any | None = None,
++            headers: HeaderTypes | None = None,
++            content: RequestContent | None = None,
++    ) -> AsyncIterator[str]:
++        # NOTE: handle_http_error is intentionally NOT applied here — for
++        # streaming the status must be checked inside the context manager
++        # (before any iteration starts), otherwise the body cannot be drained.
++        #
++        # We force "Accept-Encoding: identity" here: httpx defaults to
++        # "gzip, deflate", and a gzip-compressing proxy/server in front of the
++        # LLM API will buffer the whole SSE stream (or large chunks of it) to
++        # fill its compression window before flushing anything downstream.
++        # That turns a live token-by-token stream into a multi-minute silence
++        # followed by one giant burst — exactly what streaming was meant to
++        # avoid. Plain SSE text does not benefit from compression anyway.
++        stream_headers = Headers(headers)
++        stream_headers["accept-encoding"] = "identity"
++
++        async with self.client.stream(
++                "POST", url, json=json, headers=stream_headers, content=content
++        ) as response:
++            response.raise_for_status()
++            async for line in response.aiter_lines():
++                yield line
+--- a/ai_review/libs/http/sse.py
++++ b/ai_review/libs/http/sse.py
+@@ -0,0 +1,224 @@
++import json
++from collections.abc import AsyncIterator
++
++from pydantic import BaseModel
++
++
++class TokenUsageSchema(BaseModel):
++    prompt_tokens: int | None = None
++    completion_tokens: int | None = None
++    total_tokens: int | None = None
++
++
++class ChatChunkSchema(BaseModel):
++    delta: str = ""
++    # Some providers (GLM/Zhipu, DeepSeek-R1 style) stream chain-of-thought
++    # separately from the answer content, in a dedicated `reasoning_content`
++    # field on OpenAI-compatible chat completion chunks. We surface it as its
++    # own attribute so the gateway can route it to the thinking log channel
++    # without having to guess based on <think> tags.
++    reasoning: str = ""
++    usage: TokenUsageSchema | None = None
++
++
++def _safe_usage(obj: dict) -> TokenUsageSchema | None:
++    if not obj:
++        return None
++    return TokenUsageSchema(
++        prompt_tokens=obj.get("prompt_tokens") or obj.get("input_tokens"),
++        completion_tokens=obj.get("completion_tokens") or obj.get("output_tokens"),
++        total_tokens=obj.get("total_tokens"),
++    )
++
++
++async def parse_openai_sse(lines: AsyncIterator[str]) -> AsyncIterator[ChatChunkSchema]:
++    """OpenAI v1 / OpenRouter / Azure OpenAI chat-completion streaming."""
++    async for line in lines:
++        line = line.strip()
++        if not line or not line.startswith("data:"):
++            continue
++        data = line[len("data:"):].strip()
++        if data == "[DONE]" or not data:
++            continue
++        try:
++            payload = json.loads(data)
++        except json.JSONDecodeError:
++            continue
++
++        usage = _safe_usage(payload.get("usage"))
++
++        delta = ""
++        reasoning = ""
++        choices = payload.get("choices") or []
++        if choices:
++            delta_obj = choices[0].get("delta") or {}
++            delta = delta_obj.get("content") or ""
++            # GLM / DeepSeek-R1 / Zhipu-style extended thinking: reasoning is
++            # streamed in a sibling field before the answer starts. Without
++            # picking it up the gateway sees only empty deltas during the
++            # (often long) thinking phase and stays silent.
++            reasoning = (
++                delta_obj.get("reasoning_content")
++                or delta_obj.get("reasoning")
++                or ""
++            )
++
++        if not delta and not reasoning and usage is None:
++            continue
++        yield ChatChunkSchema(delta=delta, reasoning=reasoning, usage=usage)
++
++
++async def parse_openai_v2_sse(lines: AsyncIterator[str]) -> AsyncIterator[ChatChunkSchema]:
++    """OpenAI v2 Responses API streaming (response.output_text.delta events)."""
++    async for line in lines:
++        line = line.strip()
++        if not line or not line.startswith("data:"):
++            continue
++        data = line[len("data:"):].strip()
++        if data == "[DONE]" or not data:
++            continue
++        try:
++            payload = json.loads(data)
++        except json.JSONDecodeError:
++            continue
++
++        event_type = payload.get("type")
++
++        if event_type == "response.output_text.delta":
++            delta = payload.get("delta") or ""
++            if delta:
++                yield ChatChunkSchema(delta=delta)
++            continue
++
++        if event_type in ("response.completed", "response.done"):
++            response = payload.get("response") or {}
++            usage = _safe_usage(response.get("usage"))
++            if usage is not None:
++                yield ChatChunkSchema(delta="", usage=usage)
++
++
++async def parse_claude_sse(lines: AsyncIterator[str]) -> AsyncIterator[ChatChunkSchema]:
++    """Anthropic Messages streaming (content_block_delta / message_delta)."""
++    input_tokens = None
++    output_tokens = None
++    async for line in lines:
++        line = line.strip()
++        if not line or not line.startswith("data:"):
++            continue
++        data = line[len("data:"):].strip()
++        if not data:
++            continue
++        try:
++            payload = json.loads(data)
++        except json.JSONDecodeError:
++            continue
++
++        event_type = payload.get("type")
++
++        if event_type == "message_start":
++            message = payload.get("message") or {}
++            usage = message.get("usage") or {}
++            input_tokens = usage.get("input_tokens")
++            output_tokens = usage.get("output_tokens")
++            continue
++
++        if event_type == "content_block_delta":
++            delta_obj = payload.get("delta") or {}
++            if delta_obj.get("type") in ("text_delta", "text"):
++                text = delta_obj.get("text") or ""
++                if text:
++                    yield ChatChunkSchema(delta=text)
++            continue
++
++        if event_type == "message_delta":
++            usage = payload.get("usage") or {}
++            if usage.get("output_tokens") is not None:
++                output_tokens = usage["output_tokens"]
++            total = (input_tokens or 0) + (output_tokens or 0) if input_tokens or output_tokens else None
++            yield ChatChunkSchema(
++                delta="",
++                usage=TokenUsageSchema(
++                    prompt_tokens=input_tokens,
++                    completion_tokens=output_tokens,
++                    total_tokens=total,
++                ),
++            )
++            continue
++
++
++async def parse_gemini_sse(lines: AsyncIterator[str]) -> AsyncIterator[ChatChunkSchema]:
++    """Gemini streamGenerateContent streaming (SSE or raw NDJSON)."""
++    async for line in lines:
++        line = line.strip()
++        if not line:
++            continue
++        if line.startswith("data:"):
++            data = line[len("data:"):].strip()
++        else:
++            data = line
++        if not data:
++            continue
++        try:
++            payload = json.loads(data)
++        except json.JSONDecodeError:
++            continue
++
++        delta = ""
++        candidates = payload.get("candidates") or []
++        if candidates:
++            content = candidates[0].get("content") or {}
++            parts = content.get("parts") or []
++            for part in parts:
++                if part.get("thought"):
++                    continue
++                text = part.get("text")
++                if text:
++                    delta += text
++
++        usage = None
++        meta = payload.get("usageMetadata")
++        if meta:
++            usage = TokenUsageSchema(
++                prompt_tokens=meta.get("promptTokenCount"),
++                completion_tokens=meta.get("candidatesTokenCount") or meta.get("outputThoughtsTokenCount"),
++                total_tokens=meta.get("totalTokenCount"),
++            )
++
++        if not delta and usage is None:
++            continue
++        yield ChatChunkSchema(delta=delta, usage=usage)
++
++
++async def parse_ollama_ndjson(lines: AsyncIterator[str]) -> AsyncIterator[ChatChunkSchema]:
++    """Ollama /api/chat NDJSON streaming."""
++    async for line in lines:
++        line = line.strip()
++        if not line:
++            continue
++        try:
++            payload = json.loads(line)
++        except json.JSONDecodeError:
++            continue
++
++        message = payload.get("message") or {}
++        delta = message.get("content") or ""
++
++        if payload.get("done"):
++            prompt_tokens = payload.get("prompt_eval_count")
++            completion_tokens = payload.get("eval_count")
++            if prompt_tokens is None and completion_tokens is None:
++                total = None
++            else:
++                total = (prompt_tokens or 0) + (completion_tokens or 0)
++            yield ChatChunkSchema(
++                delta=delta,
++                usage=TokenUsageSchema(
++                    prompt_tokens=prompt_tokens,
++                    completion_tokens=completion_tokens,
++                    total_tokens=total,
++                ),
++            )
++            return
++
++        if delta:
++            yield ChatChunkSchema(delta=delta)
+--- a/ai_review/libs/llm/output_json_parser.py
++++ b/ai_review/libs/llm/output_json_parser.py
+@@ -12,6 +12,16 @@
+ 
+ CLEAN_JSON_BLOCK_RE = re.compile(r"```(?:json)?(.*?)```", re.DOTALL | re.IGNORECASE)
+ 
++# Reasoning/thinking blocks emitted by some models (DeepSeek-R1 style
++# "<think>...</think>", Anthropic-style "<thinking>...</thinking>") must never
++# reach the JSON parser — otherwise the model's chain-of-thought is mistaken
++# for the actual answer and parsing silently fails.
++THINKING_BLOCK_RE = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.DOTALL | re.IGNORECASE)
++
++
++def strip_thinking(output: str) -> str:
++    return THINKING_BLOCK_RE.sub("", output or "").strip()
++
+ 
+ class LLMOutputJSONParser(Generic[T]):
+     """Reusable JSON parser for LLM responses."""
+@@ -46,6 +56,11 @@
+             logger.warning(f"[{self.model_name}] Empty LLM output")
+             return None
+ 
++        output = strip_thinking(output)
++        if not output:
++            logger.warning(f"[{self.model_name}] Output contained only thinking block")
++            return None
++
+         logger.debug(f"[{self.model_name}] Parsing output (len={len(output)})")
+ 
+         if match := CLEAN_JSON_BLOCK_RE.search(output):
+--- a/ai_review/libs/llm/stream_logger.py
++++ b/ai_review/libs/llm/stream_logger.py
+@@ -0,0 +1,181 @@
++import re
++from typing import Callable
++
++# We split the incoming stream into two logical channels:
++#   * regular answer text — goes to the "progress" log stream
++#   * chain-of-thought inside <think>...</think> / <thinking>...</thinking>
++#     — goes to the "thinking" log stream
++#
++# Some reasoning models (DeepSeek-R1, QwQ, Anthropic extended-thinking style)
++# emit huge multi-KB thinking blocks before producing the final answer. Without
++# separating them the operator sees a long silence after "Status 200" and has
++# no idea whether the model is stuck or just thinking hard.
++
++_OPEN_TAG_RE = re.compile(r"<think(?:ing)?>", re.IGNORECASE)
++_CLOSE_TAG_RE = re.compile(r"</think(?:ing)?>", re.IGNORECASE)
++
++# Longest possible tag literal is "</thinking>" = 11 chars. We hold back this
++# many chars from the tail of the "pending" buffer so a tag split across
++# two chunks (e.g. "<thi" | "nk>") is not misclassified.
++_MAX_TAG_LEN = len("</thinking>")
++
++
++class StreamSegmentLogger:
++    """Split streamed text into `answer` and `thinking` channels on the fly.
++
++    The caller feeds chunks via :meth:`feed`, then calls :meth:`flush` at the
++    end of the stream to release any remaining buffered content. Each channel
++    is flushed independently once the buffered length reaches
++    ``chunk_chars_threshold`` characters; a callback receives the full piece,
++    its size and the running total of characters emitted on that channel.
++    """
++
++    def __init__(
++            self,
++            chunk_chars_threshold: int,
++            on_answer: Callable[[str, int, int], None],
++            on_thinking: Callable[[str, int, int], None],
++    ) -> None:
++        self._threshold = chunk_chars_threshold
++        self._on_answer = on_answer
++        self._on_thinking = on_thinking
++
++        self._in_thinking = False
++        # Buffer that has not been dispatched to a channel yet. May contain
++        # partial tag prefix at the tail (kept until we can decide whether
++        # it is a real tag or plain text).
++        self._pending = ""
++
++        # Per-channel accumulators (flushed once threshold is exceeded).
++        self._answer_buf = ""
++        self._thinking_buf = ""
++        self._answer_total = 0
++        self._thinking_total = 0
++
++    # --------------- public API ---------------
++
++    def feed(self, delta: str) -> None:
++        if not delta:
++            return
++        self._pending += delta
++        self._drain(final=False)
++
++    def feed_thinking(self, text: str) -> None:
++        """Send text straight to the thinking channel, bypassing tag parsing.
++
++        Used when the provider streams reasoning in a dedicated field (e.g.
++        GLM's ``reasoning_content``) — there's no tag to detect and the text
++        would never appear in the answer anyway.
++        """
++        if not text:
++            return
++        self._push_thinking(text)
++
++    def flush(self) -> None:
++        # Force-drain: at end of stream any tag-lookahead reserve must go out.
++        self._drain(final=True)
++        if self._answer_buf:
++            self._emit_answer()
++        if self._thinking_buf:
++            self._emit_thinking()
++
++    # ---- observability helpers for heartbeat ----
++
++    @property
++    def answer_total(self) -> int:
++        return self._answer_total
++
++    @property
++    def thinking_total(self) -> int:
++        return self._thinking_total
++
++    @property
++    def pending_answer_chars(self) -> int:
++        return len(self._answer_buf)
++
++    @property
++    def pending_thinking_chars(self) -> int:
++        return len(self._thinking_buf)
++
++    # --------------- internals ---------------
++
++    def _drain(self, final: bool) -> None:
++        while self._pending:
++            if self._in_thinking:
++                match = _CLOSE_TAG_RE.search(self._pending)
++                if match:
++                    # Everything before the closing tag is thinking content;
++                    # then we exit the thinking mode and keep parsing the tail
++                    # for possible further tags / answer content.
++                    self._push_thinking(self._pending[:match.start()])
++                    self._pending = self._pending[match.end():]
++                    self._in_thinking = False
++                    continue
++                # No closing tag yet. Emit everything except a tail that could
++                # still be the start of one.
++                if final:
++                    self._push_thinking(self._pending)
++                    self._pending = ""
++                else:
++                    safe_len = self._safe_prefix_len()
++                    if safe_len:
++                        self._push_thinking(self._pending[:safe_len])
++                        self._pending = self._pending[safe_len:]
++                    return
++            else:
++                match = _OPEN_TAG_RE.search(self._pending)
++                if match:
++                    self._push_answer(self._pending[:match.start()])
++                    self._pending = self._pending[match.end():]
++                    self._in_thinking = True
++                    continue
++                if final:
++                    self._push_answer(self._pending)
++                    self._pending = ""
++                else:
++                    safe_len = self._safe_prefix_len()
++                    if safe_len:
++                        self._push_answer(self._pending[:safe_len])
++                        self._pending = self._pending[safe_len:]
++                    return
++
++    def _safe_prefix_len(self) -> int:
++        # We only need to hold back a tail if it could contain the beginning
++        # of a tag. Tags always start with '<'. If there's no '<' at all we
++        # can flush the whole pending buffer immediately; otherwise we keep
++        # everything from the last '<' to the end of the buffer, but at most
++        # ``_MAX_TAG_LEN - 1`` characters (a fully-formed tag was already
++        # matched by the regex above, so anything longer cannot be a prefix).
++        last_lt = self._pending.rfind("<")
++        if last_lt < 0:
++            return len(self._pending)
++        reserve = min(len(self._pending) - last_lt, _MAX_TAG_LEN - 1)
++        return len(self._pending) - reserve
++
++    def _push_answer(self, text: str) -> None:
++        if not text:
++            return
++        self._answer_buf += text
++        if len(self._answer_buf) >= self._threshold:
++            self._emit_answer()
++
++    def _push_thinking(self, text: str) -> None:
++        if not text:
++            return
++        self._thinking_buf += text
++        if len(self._thinking_buf) >= self._threshold:
++            self._emit_thinking()
++
++    def _emit_answer(self) -> None:
++        piece = self._answer_buf
++        size = len(piece)
++        self._answer_total += size
++        self._answer_buf = ""
++        self._on_answer(piece, size, self._answer_total)
++
++    def _emit_thinking(self) -> None:
++        piece = self._thinking_buf
++        size = len(piece)
++        self._thinking_total += size
++        self._thinking_buf = ""
++        self._on_thinking(piece, size, self._thinking_total)
+--- a/ai_review/services/llm/azure_openai/client.py
++++ b/ai_review/services/llm/azure_openai/client.py
+@@ -1,6 +1,9 @@
++from collections.abc import AsyncIterator
++
+ from ai_review.clients.azure_openai.client import get_azure_openai_http_client
+ from ai_review.clients.azure_openai.schema import AzureOpenAIMessage, AzureOpenAIChatRequestSchema
+ from ai_review.config import settings
++from ai_review.libs.http.sse import ChatChunkSchema
+ from ai_review.services.llm.types import LLMClientProtocol, ChatResultSchema
+ 
+ 
+@@ -24,3 +27,16 @@
+             prompt_tokens=response.usage.prompt_tokens,
+             completion_tokens=response.usage.completion_tokens,
+         )
++
++    async def chat_stream(self, prompt: str, prompt_system: str) -> AsyncIterator[ChatChunkSchema]:
++        request = AzureOpenAIChatRequestSchema(
++            stream=True,
++            messages=[
++                AzureOpenAIMessage(role="system", content=prompt_system),
++                AzureOpenAIMessage(role="user", content=prompt),
++            ],
++            temperature=settings.llm.meta.temperature,
++            max_tokens=settings.llm.meta.max_tokens,
++        )
++        async for chunk in self.http_client.chat_stream(request):
++            yield chunk
+--- a/ai_review/services/llm/bedrock/client.py
++++ b/ai_review/services/llm/bedrock/client.py
+@@ -1,6 +1,9 @@
++from collections.abc import AsyncIterator
++
+ from ai_review.clients.bedrock.client import get_bedrock_http_client
+ from ai_review.clients.bedrock.schema import BedrockMessageSchema, BedrockChatRequestSchema
+ from ai_review.config import settings
++from ai_review.libs.http.sse import ChatChunkSchema
+ from ai_review.services.llm.types import LLMClientProtocol, ChatResultSchema
+ 
+ 
+@@ -25,3 +28,9 @@
+             prompt_tokens=response.usage.input_tokens,
+             completion_tokens=response.usage.output_tokens,
+         )
++
++    async def chat_stream(self, prompt: str, prompt_system: str) -> AsyncIterator[ChatChunkSchema]:
++        # Bedrock streaming is intentionally not supported; the `stream` flag
++        # in LLMMetaConfig is ignored for this provider.
++        raise NotImplementedError("Bedrock streaming is not supported")
++        yield ChatChunkSchema()  # pragma: no cover - marks this as async generator
+--- a/ai_review/services/llm/claude/client.py
++++ b/ai_review/services/llm/claude/client.py
+@@ -1,6 +1,9 @@
++from collections.abc import AsyncIterator
++
+ from ai_review.clients.claude.client import get_claude_http_client
+ from ai_review.clients.claude.schema import ClaudeChatRequestSchema, ClaudeMessageSchema
+ from ai_review.config import settings
++from ai_review.libs.http.sse import ChatChunkSchema
+ from ai_review.services.llm.types import LLMClientProtocol, ChatResultSchema
+ 
+ 
+@@ -24,3 +27,16 @@
+             prompt_tokens=response.usage.input_tokens,
+             completion_tokens=response.usage.output_tokens,
+         )
++
++    async def chat_stream(self, prompt: str, prompt_system: str) -> AsyncIterator[ChatChunkSchema]:
++        meta = settings.llm.meta
++        request = ClaudeChatRequestSchema(
++            model=meta.model,
++            stream=True,
++            system=prompt_system,
++            messages=[ClaudeMessageSchema(role="user", content=prompt)],
++            max_tokens=meta.max_tokens,
++            temperature=meta.temperature,
++        )
++        async for chunk in self.http_client.chat_stream(request):
++            yield chunk
+--- a/ai_review/services/llm/gemini/client.py
++++ b/ai_review/services/llm/gemini/client.py
+@@ -1,3 +1,5 @@
++from collections.abc import AsyncIterator
++
+ from ai_review.clients.gemini.client import get_gemini_http_client
+ from ai_review.clients.gemini.schema import (
+     GeminiPartSchema,
+@@ -6,6 +8,7 @@
+     GeminiGenerationConfigSchema,
+ )
+ from ai_review.config import settings
++from ai_review.libs.http.sse import ChatChunkSchema
+ from ai_review.services.llm.types import LLMClientProtocol, ChatResultSchema
+ 
+ 
+@@ -29,3 +32,16 @@
+             prompt_tokens=response.usage.prompt_tokens,
+             completion_tokens=response.usage.completion_tokens,
+         )
++
++    async def chat_stream(self, prompt: str, prompt_system: str) -> AsyncIterator[ChatChunkSchema]:
++        request = GeminiChatRequestSchema(
++            stream=True,
++            contents=[GeminiContentSchema(parts=[GeminiPartSchema(text=prompt)])],
++            generation_config=GeminiGenerationConfigSchema(
++                temperature=settings.llm.meta.temperature,
++                max_output_tokens=settings.llm.meta.max_tokens,
++            ),
++            system_instruction=GeminiContentSchema(parts=[GeminiPartSchema(text=prompt_system)])
++        )
++        async for chunk in self.http_client.chat_stream(request):
++            yield chunk
+--- a/ai_review/services/llm/ollama/client.py
++++ b/ai_review/services/llm/ollama/client.py
+@@ -1,6 +1,9 @@
++from collections.abc import AsyncIterator
++
+ from ai_review.clients.ollama.client import get_ollama_http_client
+ from ai_review.clients.ollama.schema import OllamaChatRequestSchema, OllamaMessageSchema, OllamaOptionsSchema
+ from ai_review.config import settings
++from ai_review.libs.http.sse import ChatChunkSchema
+ from ai_review.services.llm.types import LLMClientProtocol, ChatResultSchema
+ 
+ 
+@@ -33,3 +36,25 @@
+             prompt_tokens=response.usage.prompt_tokens if response.usage else None,
+             completion_tokens=response.usage.completion_tokens if response.usage else None,
+         )
++
++    async def chat_stream(self, prompt: str, prompt_system: str) -> AsyncIterator[ChatChunkSchema]:
++        meta = settings.llm.meta
++        request = OllamaChatRequestSchema(
++            model=meta.model,
++            stream=True,
++            options=OllamaOptionsSchema(
++                stop=meta.stop,
++                seed=meta.seed,
++                top_p=meta.top_p,
++                num_ctx=meta.num_ctx,
++                temperature=meta.temperature,
++                num_predict=meta.max_tokens,
++                repeat_penalty=meta.repeat_penalty,
++            ),
++            messages=[
++                OllamaMessageSchema(role="system", content=prompt_system),
++                OllamaMessageSchema(role="user", content=prompt),
++            ],
++        )
++        async for chunk in self.http_client.chat_stream(request):
++            yield chunk
+--- a/ai_review/services/llm/openai/client.py
++++ b/ai_review/services/llm/openai/client.py
+@@ -1,8 +1,11 @@
++from collections.abc import AsyncIterator
++
+ from ai_review.clients.openai.v1.client import get_openai_v1_http_client
+ from ai_review.clients.openai.v1.schema import OpenAIChatRequestSchema, OpenAIMessageSchema
+ from ai_review.clients.openai.v2.client import get_openai_v2_http_client
+ from ai_review.clients.openai.v2.schema import OpenAIInputMessageSchema, OpenAIResponsesRequestSchema
+ from ai_review.config import settings
++from ai_review.libs.http.sse import ChatChunkSchema
+ from ai_review.services.llm.types import LLMClientProtocol, ChatResultSchema
+ 
+ 
+@@ -54,3 +57,40 @@
+             return await self.chat_v2(prompt, prompt_system)
+ 
+         return await self.chat_v1(prompt, prompt_system)
++
++    async def chat_stream_v1(self, prompt: str, prompt_system: str) -> AsyncIterator[ChatChunkSchema]:
++        request = OpenAIChatRequestSchema(
++            model=self.meta.model,
++            stream=True,
++            messages=[
++                OpenAIMessageSchema(role="system", content=prompt_system),
++                OpenAIMessageSchema(role="user", content=prompt),
++            ],
++            max_tokens=self.meta.max_tokens,
++            temperature=self.meta.temperature,
++        )
++        async for chunk in self.http_client_v1.chat_stream(request):
++            yield chunk
++
++    async def chat_stream_v2(self, prompt: str, prompt_system: str) -> AsyncIterator[ChatChunkSchema]:
++        request = OpenAIResponsesRequestSchema(
++            model=self.meta.model,
++            stream=True,
++            input=[
++                OpenAIInputMessageSchema(role="system", content=prompt_system),
++                OpenAIInputMessageSchema(role="user", content=prompt),
++            ],
++            temperature=self.meta.temperature,
++            max_output_tokens=self.meta.max_tokens,
++        )
++        async for chunk in self.http_client_v2.chat_stream(request):
++            yield chunk
++
++    async def chat_stream(self, prompt: str, prompt_system: str) -> AsyncIterator[ChatChunkSchema]:
++        if self.meta.is_v2_model:
++            async for chunk in self.chat_stream_v2(prompt, prompt_system):
++                yield chunk
++            return
++
++        async for chunk in self.chat_stream_v1(prompt, prompt_system):
++            yield chunk
+--- a/ai_review/services/llm/openrouter/client.py
++++ b/ai_review/services/llm/openrouter/client.py
+@@ -1,9 +1,12 @@
++from collections.abc import AsyncIterator
++
+ from ai_review.clients.openrouter.client import get_openrouter_http_client
+ from ai_review.clients.openrouter.schema import (
+     OpenRouterMessageSchema,
+     OpenRouterChatRequestSchema,
+ )
+ from ai_review.config import settings
++from ai_review.libs.http.sse import ChatChunkSchema
+ from ai_review.services.llm.types import LLMClientProtocol, ChatResultSchema
+ 
+ 
+@@ -29,3 +32,18 @@
+             prompt_tokens=response.usage.prompt_tokens,
+             completion_tokens=response.usage.completion_tokens,
+         )
++
++    async def chat_stream(self, prompt: str, prompt_system: str) -> AsyncIterator[ChatChunkSchema]:
++        meta = settings.llm.meta
++        request = OpenRouterChatRequestSchema(
++            model=meta.model,
++            stream=True,
++            messages=[
++                OpenRouterMessageSchema(role="system", content=prompt_system),
++                OpenRouterMessageSchema(role="user", content=prompt),
++            ],
++            max_tokens=meta.max_tokens,
++            temperature=meta.temperature,
++        )
++        async for chunk in self.http_client.chat_stream(request):
++            yield chunk
+--- a/ai_review/services/llm/types.py
++++ b/ai_review/services/llm/types.py
+@@ -1,7 +1,10 @@
++from collections.abc import AsyncIterator
+ from typing import Protocol
+ 
+ from pydantic import BaseModel
+ 
++from ai_review.libs.http.sse import ChatChunkSchema
++
+ 
+ class ChatResultSchema(BaseModel):
+     text: str
+@@ -13,3 +16,6 @@
+ class LLMClientProtocol(Protocol):
+     async def chat(self, prompt: str, prompt_system: str) -> ChatResultSchema:
+         ...
++
++    def chat_stream(self, prompt: str, prompt_system: str) -> AsyncIterator[ChatChunkSchema]:
++        ...
+--- a/ai_review/services/review/gateway/review_agent_llm_gateway.py
++++ b/ai_review/services/review/gateway/review_agent_llm_gateway.py
+@@ -1,3 +1,5 @@
++from collections.abc import AsyncIterator
++
+ from ai_review.libs.logger import get_logger
+ from ai_review.services.agent.loop.types import AgentLoopServiceProtocol
+ from ai_review.services.artifacts.types import ArtifactsServiceProtocol
+@@ -54,3 +56,40 @@
+             logger.exception(f"Agent mode failed, falling back to direct chat: {error}")
+             await hook.emit_chat_error(prompt, prompt_system)
+             return await self.fallback_gateway.ask(prompt, prompt_system)
++
++    async def ask_stream(self, prompt: str, prompt_system: str) -> AsyncIterator[str]:
++        # The agent loop itself runs through the regular (non-streamed)
++        # chat() path — intermediate tool-call steps are not streamed, which
++        # keeps the agent complexity manageable. Only the final answer is
++        # forwarded downstream once the loop has produced it.
++        try:
++            await hook.emit_chat_start(prompt, prompt_system)
++            loop_result = await self.agent_loop.run(
++                prompt=prompt,
++                prompt_system=prompt_system,
++            )
++
++            if loop_result.final_text:
++                yield loop_result.final_text
++
++            report = self.cost.calculate(
++                CalculateCostSchema(
++                    prompt_tokens=loop_result.prompt_tokens,
++                    completion_tokens=loop_result.completion_tokens
++                )
++            )
++            if report:
++                logger.info(report.pretty())
++
++            await hook.emit_chat_complete(loop_result.final_text, report)
++            await self.artifacts.save_llm(
++                prompt=prompt,
++                response=loop_result.final_text,
++                cost_report=report,
++                prompt_system=prompt_system,
++            )
++        except Exception as error:
++            logger.exception(f"Agent mode failed, falling back to direct chat stream: {error}")
++            await hook.emit_chat_error(prompt, prompt_system)
++            async for delta in self.fallback_gateway.ask_stream(prompt, prompt_system):
++                yield delta
+--- a/ai_review/services/review/gateway/review_direct_llm_gateway.py
++++ b/ai_review/services/review/gateway/review_direct_llm_gateway.py
+@@ -1,14 +1,30 @@
++import asyncio
++import time
++from collections.abc import AsyncIterator
++
++from ai_review.config import settings
++from ai_review.libs.llm.stream_logger import StreamSegmentLogger
+ from ai_review.libs.logger import get_logger
+ from ai_review.services.artifacts.types import ArtifactsServiceProtocol
+ from ai_review.services.cost.schema import CalculateCostSchema
+ from ai_review.services.cost.types import CostServiceProtocol
+ from ai_review.services.hook import hook
+-from ai_review.services.llm.types import LLMClientProtocol
++from ai_review.services.llm.types import LLMClientProtocol, ChatResultSchema
+ from ai_review.services.review.gateway.types import ReviewLLMGatewayProtocol
+ 
+ logger = get_logger("REVIEW_DIRECT_LLM_GATEWAY")
+ 
+ 
++def _preview(text: str, max_chars: int = 120) -> str:
++    # Collapse newlines/tabs so the progress line stays on a single log line
++    # and truncate to a reasonable size — we're logging progress, not the
++    # whole response (that is written to artifacts at the end).
++    flat = text.replace("\n", " ").replace("\r", " ").replace("\t", " ").strip()
++    if len(flat) <= max_chars:
++        return flat
++    return flat[:max_chars] + "…"
++
++
+ class ReviewDirectLLMGateway(ReviewLLMGatewayProtocol):
+     def __init__(
+             self,
+@@ -50,3 +66,116 @@
+         except Exception as error:
+             logger.exception(f"LLM request failed: {error}")
+             await hook.emit_chat_error(prompt, prompt_system)
++
++    async def ask_stream(self, prompt: str, prompt_system: str) -> AsyncIterator[str]:
++        try:
++            await hook.emit_chat_start(prompt, prompt_system)
++
++            log_progress = settings.llm.meta.stream_log_progress
++            log_chunk_chars = settings.llm.meta.stream_log_chunk_chars
++            heartbeat_seconds = settings.llm.meta.stream_log_heartbeat_seconds
++            if log_progress:
++                logger.info("Streaming started, waiting for model output…")
++
++            def _log_answer(piece: str, size: int, total: int) -> None:
++                logger.info(
++                    f"Streaming progress "
++                    f"(+{size} chars, {total} total): "
++                    f"{_preview(piece)}"
++                )
++
++            def _log_thinking(piece: str, size: int, total: int) -> None:
++                logger.info(
++                    f"Streaming thinking "
++                    f"(+{size} chars, {total} total): "
++                    f"{_preview(piece)}"
++                )
++
++            segment_logger = StreamSegmentLogger(
++                chunk_chars_threshold=log_chunk_chars,
++                on_answer=_log_answer,
++                on_thinking=_log_thinking,
++            )
++
++            parts: list[str] = []
++            prompt_tokens = None
++            completion_tokens = None
++            total_tokens = None
++            started_at = time.monotonic()
++
++            chunk_iterator = self.llm.chat_stream(prompt, prompt_system).__aiter__()
++            while True:
++                try:
++                    chunk = await asyncio.wait_for(
++                        chunk_iterator.__anext__(),
++                        timeout=heartbeat_seconds if log_progress else None,
++                    )
++                except StopAsyncIteration:
++                    break
++                except asyncio.TimeoutError:
++                    if log_progress:
++                        elapsed = time.monotonic() - started_at
++                        logger.info(
++                            "Streaming heartbeat: still waiting for model, "
++                            f"elapsed {elapsed:.0f}s, "
++                            f"answer {segment_logger.answer_total}+"
++                            f"{segment_logger.pending_answer_chars} chars, "
++                            f"thinking {segment_logger.thinking_total}+"
++                            f"{segment_logger.pending_thinking_chars} chars"
++                        )
++                    continue
++
++                if chunk.delta:
++                    parts.append(chunk.delta)
++                    yield chunk.delta
++
++                    if log_progress:
++                        segment_logger.feed(chunk.delta)
++
++                if chunk.reasoning and log_progress:
++                    # Reasoning is not part of the parsed answer — it's for
++                    # log visibility only. We route it to the thinking channel
++                    # so the operator sees the model is actually working.
++                    segment_logger.feed_thinking(chunk.reasoning)
++
++                if chunk.usage is not None:
++                    prompt_tokens = chunk.usage.prompt_tokens
++                    completion_tokens = chunk.usage.completion_tokens
++                    total_tokens = chunk.usage.total_tokens
++
++            if log_progress:
++                segment_logger.flush()
++
++            full_text = "".join(parts)
++            if log_progress:
++                logger.info(f"Streaming finished, {len(full_text)} chars total")
++            result = ChatResultSchema(
++                text=full_text,
++                total_tokens=total_tokens,
++                prompt_tokens=prompt_tokens,
++                completion_tokens=completion_tokens,
++            )
++            if not full_text:
++                logger.warning(
++                    f"LLM returned an empty response (prompt length={len(prompt)} chars)"
++                )
++
++            report = self.cost.calculate(
++                CalculateCostSchema(
++                    prompt_tokens=result.prompt_tokens,
++                    completion_tokens=result.completion_tokens
++                )
++            )
++            if report:
++                logger.info(report.pretty())
++
++            await hook.emit_chat_complete(result, report)
++            await self.artifacts.save_llm(
++                prompt=prompt,
++                response=full_text,
++                cost_report=report,
++                prompt_system=prompt_system,
++            )
++        except Exception as error:
++            logger.exception(f"LLM request failed: {error}")
++            await hook.emit_chat_error(prompt, prompt_system)
+--- a/ai_review/services/review/gateway/types.py
++++ b/ai_review/services/review/gateway/types.py
+@@ -1,3 +1,4 @@
++from collections.abc import AsyncIterator
+ from typing import Protocol
+ 
+ from ai_review.services.artifacts.types import ArtifactsServiceProtocol
+@@ -18,6 +19,9 @@
+     async def ask(self, prompt: str, prompt_system: str) -> str:
+         ...
+ 
++    def ask_stream(self, prompt: str, prompt_system: str) -> AsyncIterator[str]:
++        ...
++
+ 
+ class ReviewCommentGatewayProtocol(Protocol):
+     vcs: VCSClientProtocol
+--- a/ai_review/services/review/runner/context.py
++++ b/ai_review/services/review/runner/context.py
+@@ -9,6 +9,7 @@
+ from ai_review.services.review.gateway.types import ReviewLLMGatewayProtocol, ReviewCommentGatewayProtocol
+ from ai_review.services.review.internal.inline.types import InlineCommentServiceProtocol
+ from ai_review.services.review.runner.types import ReviewRunnerProtocol
++from ai_review.services.review.runner.utils import collect_prompt_result
+ from ai_review.services.vcs.types import VCSClientProtocol
+ 
+ logger = get_logger("CONTEXT_REVIEW_RUNNER")
+@@ -63,7 +64,7 @@
+         prompt_context = build_prompt_context_from_review_info(review_info)
+         prompt = self.prompt.build_context_request(rendered_files, prompt_context, threads=all_threads)
+         prompt_system = self.prompt.build_system_context_request(prompt_context)
+-        prompt_result = await self.review_llm_gateway.ask(prompt, prompt_system)
++        prompt_result = await collect_prompt_result(self.review_llm_gateway, prompt, prompt_system)
+ 
+         comments = self.inline_comment.parse_model_output(prompt_result).dedupe()
+         comments.root = self.policy.apply_for_context_comments(comments.root)
+--- a/ai_review/services/review/runner/inline.py
++++ b/ai_review/services/review/runner/inline.py
+@@ -10,6 +10,7 @@
+ from ai_review.services.review.gateway.types import ReviewLLMGatewayProtocol, ReviewCommentGatewayProtocol
+ from ai_review.services.review.internal.inline.types import InlineCommentServiceProtocol
+ from ai_review.services.review.runner.types import ReviewRunnerProtocol
++from ai_review.services.review.runner.utils import collect_prompt_result
+ from ai_review.services.vcs.types import ReviewInfoSchema, ReviewThreadSchema, VCSClientProtocol
+ 
+ logger = get_logger("INLINE_REVIEW_RUNNER")
+@@ -59,7 +60,7 @@
+         prompt_context = build_prompt_context_from_review_info(review_info)
+         prompt = self.prompt.build_inline_request(rendered_file, prompt_context, threads=file_threads)
+         prompt_system = self.prompt.build_system_inline_request(prompt_context)
+-        prompt_result = await self.review_llm_gateway.ask(prompt, prompt_system)
++        prompt_result = await collect_prompt_result(self.review_llm_gateway, prompt, prompt_system)
+ 
+         comments = self.inline_comment.parse_model_output(prompt_result).dedupe()
+         comments.root = self.policy.apply_for_inline_comments(comments.root)
+--- a/ai_review/services/review/runner/inline_reply.py
++++ b/ai_review/services/review/runner/inline_reply.py
+@@ -10,6 +10,7 @@
+ from ai_review.services.review.gateway.types import ReviewCommentGatewayProtocol, ReviewLLMGatewayProtocol
+ from ai_review.services.review.internal.inline_reply.types import InlineCommentReplyServiceProtocol
+ from ai_review.services.review.runner.types import ReviewRunnerProtocol
++from ai_review.services.review.runner.utils import collect_prompt_result
+ from ai_review.services.vcs.types import ReviewInfoSchema, VCSClientProtocol, ReviewThreadSchema
+ 
+ logger = get_logger("INLINE_REPLY_REVIEW_RUNNER")
+@@ -56,7 +57,7 @@
+         prompt_context = build_prompt_context_from_review_info(review_info)
+         prompt = self.prompt.build_inline_reply_request(rendered_file, thread, prompt_context)
+         prompt_system = self.prompt.build_system_inline_reply_request(prompt_context)
+-        prompt_result = await self.review_llm_gateway.ask(prompt, prompt_system)
++        prompt_result = await collect_prompt_result(self.review_llm_gateway, prompt, prompt_system)
+ 
+         reply = self.inline_comment_reply.parse_model_output(prompt_result)
+         if not reply:
+--- a/ai_review/services/review/runner/summary.py
++++ b/ai_review/services/review/runner/summary.py
+@@ -9,6 +9,7 @@
+ from ai_review.services.review.gateway.types import ReviewLLMGatewayProtocol, ReviewCommentGatewayProtocol
+ from ai_review.services.review.internal.summary.types import SummaryCommentServiceProtocol
+ from ai_review.services.review.runner.types import ReviewRunnerProtocol
++from ai_review.services.review.runner.utils import collect_prompt_result
+ from ai_review.services.vcs.types import VCSClientProtocol
+ 
+ logger = get_logger("SUMMARY_REVIEW_RUNNER")
+@@ -59,7 +60,7 @@
+         prompt_context = build_prompt_context_from_review_info(review_info)
+         prompt = self.prompt.build_summary_request(rendered_files, prompt_context, threads=all_threads)
+         prompt_system = self.prompt.build_system_summary_request(prompt_context)
+-        prompt_result = await self.review_llm_gateway.ask(prompt, prompt_system)
++        prompt_result = await collect_prompt_result(self.review_llm_gateway, prompt, prompt_system)
+ 
+         summary = self.summary_comment.parse_model_output(prompt_result)
+         if not summary.text.strip():
+--- a/ai_review/services/review/runner/summary_reply.py
++++ b/ai_review/services/review/runner/summary_reply.py
+@@ -10,6 +10,7 @@
+ from ai_review.services.review.gateway.types import ReviewCommentGatewayProtocol, ReviewLLMGatewayProtocol
+ from ai_review.services.review.internal.summary_reply.types import SummaryCommentReplyServiceProtocol
+ from ai_review.services.review.runner.types import ReviewRunnerProtocol
++from ai_review.services.review.runner.utils import collect_prompt_result
+ from ai_review.services.vcs.types import VCSClientProtocol, ReviewThreadSchema, ReviewInfoSchema
+ 
+ logger = get_logger("SUMMARY_REPLY_REVIEW_RUNNER")
+@@ -55,7 +56,7 @@
+         prompt_context = build_prompt_context_from_review_info(review_info)
+         prompt = self.prompt.build_summary_reply_request(rendered_files, thread, prompt_context)
+         prompt_system = self.prompt.build_system_summary_reply_request(prompt_context)
+-        prompt_result = await self.review_llm_gateway.ask(prompt, prompt_system)
++        prompt_result = await collect_prompt_result(self.review_llm_gateway, prompt, prompt_system)
+ 
+         reply = self.summary_comment_reply.parse_model_output(prompt_result)
+         if not reply:
+--- a/ai_review/services/review/runner/utils.py
++++ b/ai_review/services/review/runner/utils.py
+@@ -0,0 +1,23 @@
++from ai_review.config import settings
++from ai_review.services.review.gateway.types import ReviewLLMGatewayProtocol
++
++
++async def collect_prompt_result(
++        gateway: ReviewLLMGatewayProtocol,
++        prompt: str,
++        prompt_system: str,
++) -> str:
++    """Resolve the model's full response for a runner.
++
++    When streaming is enabled in ``settings.llm.meta.stream`` the response is
++    assembled from the deltas produced by ``gateway.ask_stream``; otherwise the
++    regular non-streaming ``gateway.ask`` is used. Parsing happens afterwards
++    on the fully assembled text, so parser interfaces are unchanged.
++    """
++    if settings.llm.meta.stream:
++        chunks: list[str] = []
++        async for delta in gateway.ask_stream(prompt, prompt_system):
++            chunks.append(delta)
++        return "".join(chunks)
++
++    return await gateway.ask(prompt, prompt_system)
+--- a/ai_review/tests/fixtures/clients/azure_openai.py
++++ b/ai_review/tests/fixtures/clients/azure_openai.py
+@@ -1,4 +1,5 @@
+ from typing import Any
++from collections.abc import AsyncIterator
+ 
+ import pytest
+ from pydantic import HttpUrl, SecretStr
+@@ -18,6 +19,7 @@
+ )
+ from ai_review.libs.config.llm.base import AzureOpenAILLMConfig
+ from ai_review.libs.constants.llm_provider import LLMProvider
++from ai_review.libs.http.sse import ChatChunkSchema
+ from ai_review.services.llm.azure_openai.client import AzureOpenAILLMClient
+ 
+ 
+@@ -49,6 +51,13 @@
+             ),
+         )
+ 
++    async def chat_stream(self, request: AzureOpenAIChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        self.calls.append(("chat_stream", {"request": request}))
++        for chunk in self.responses.get("chat_stream", [
++            ChatChunkSchema(delta="FAKE_AZURE_OPENAI_RESPONSE"),
++        ]):
++            yield chunk
++
+ 
+ @pytest.fixture
+ def fake_azure_openai_http_client():
+--- a/ai_review/tests/fixtures/clients/claude.py
++++ b/ai_review/tests/fixtures/clients/claude.py
+@@ -1,4 +1,5 @@
+ from typing import Any
++from collections.abc import AsyncIterator
+ 
+ import pytest
+ from pydantic import HttpUrl, SecretStr
+@@ -14,6 +15,7 @@
+ from ai_review.libs.config.llm.base import ClaudeLLMConfig
+ from ai_review.libs.config.llm.claude import ClaudeMetaConfig, ClaudeHTTPClientConfig
+ from ai_review.libs.constants.llm_provider import LLMProvider
++from ai_review.libs.http.sse import ChatChunkSchema
+ from ai_review.services.llm.claude.client import ClaudeLLMClient
+ 
+ 
+@@ -34,6 +36,13 @@
+             ),
+         )
+ 
++    async def chat_stream(self, request: ClaudeChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        self.calls.append(("chat_stream", {"request": request}))
++        for chunk in self.responses.get("chat_stream", [
++            ChatChunkSchema(delta="FAKE_CLAUDE_RESPONSE"),
++        ]):
++            yield chunk
++
+ 
+ @pytest.fixture
+ def fake_claude_http_client():
+--- a/ai_review/tests/fixtures/clients/gemini.py
++++ b/ai_review/tests/fixtures/clients/gemini.py
+@@ -1,4 +1,5 @@
+ from typing import Any
++from collections.abc import AsyncIterator
+ 
+ import pytest
+ from pydantic import HttpUrl, SecretStr
+@@ -16,6 +17,7 @@
+ from ai_review.libs.config.llm.base import GeminiLLMConfig
+ from ai_review.libs.config.llm.gemini import GeminiMetaConfig, GeminiHTTPClientConfig
+ from ai_review.libs.constants.llm_provider import LLMProvider
++from ai_review.libs.http.sse import ChatChunkSchema
+ from ai_review.services.llm.gemini.client import GeminiLLMClient
+ 
+ 
+@@ -41,6 +43,13 @@
+             ),
+         )
+ 
++    async def chat_stream(self, request: GeminiChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        self.calls.append(("chat_stream", {"request": request}))
++        for chunk in self.responses.get("chat_stream", [
++            ChatChunkSchema(delta="FAKE_GEMINI_RESPONSE"),
++        ]):
++            yield chunk
++
+ 
+ @pytest.fixture
+ def fake_gemini_http_client() -> FakeGeminiHTTPClient:
+--- a/ai_review/tests/fixtures/clients/ollama.py
++++ b/ai_review/tests/fixtures/clients/ollama.py
+@@ -1,4 +1,5 @@
+ from typing import Any
++from collections.abc import AsyncIterator
+ 
+ import pytest
+ from pydantic import HttpUrl
+@@ -14,6 +15,7 @@
+ from ai_review.libs.config.llm.base import OllamaLLMConfig
+ from ai_review.libs.config.llm.ollama import OllamaMetaConfig, OllamaHTTPClientConfig
+ from ai_review.libs.constants.llm_provider import LLMProvider
++from ai_review.libs.http.sse import ChatChunkSchema
+ from ai_review.services.llm.ollama.client import OllamaLLMClient
+ 
+ 
+@@ -34,6 +36,13 @@
+             ),
+         )
+ 
++    async def chat_stream(self, request: OllamaChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        self.calls.append(("chat_stream", {"request": request}))
++        for chunk in self.responses.get("chat_stream", [
++            ChatChunkSchema(delta="FAKE_OLLAMA_RESPONSE"),
++        ]):
++            yield chunk
++
+ 
+ @pytest.fixture
+ def fake_ollama_http_client():
+--- a/ai_review/tests/fixtures/clients/openai.py
++++ b/ai_review/tests/fixtures/clients/openai.py
+@@ -1,4 +1,5 @@
+ from typing import Any
++from collections.abc import AsyncIterator
+ 
+ import pytest
+ from pydantic import HttpUrl, SecretStr
+@@ -23,6 +24,7 @@
+ from ai_review.libs.config.llm.base import OpenAILLMConfig
+ from ai_review.libs.config.llm.openai import OpenAIMetaConfig, OpenAIHTTPClientConfig
+ from ai_review.libs.constants.llm_provider import LLMProvider
++from ai_review.libs.http.sse import ChatChunkSchema
+ from ai_review.services.llm.openai.client import OpenAILLMClient
+ 
+ 
+@@ -48,6 +50,14 @@
+             ),
+         )
+ 
++    async def chat_stream(self, request: OpenAIChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        self.calls.append(("chat_stream", {"request": request}))
++        for chunk in self.responses.get("chat_stream", [
++            ChatChunkSchema(delta="FAKE_OPENAI_V1_"),
++            ChatChunkSchema(delta="RESPONSE"),
++        ]):
++            yield chunk
++
+ 
+ class FakeOpenAIV2HTTPClient(OpenAIV2HTTPClientProtocol):
+     def __init__(self, responses: dict[str, Any] | None = None) -> None:
+@@ -77,6 +87,13 @@
+             ),
+         )
+ 
++    async def chat_stream(self, request: OpenAIResponsesRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        self.calls.append(("chat_stream", {"request": request}))
++        for chunk in self.responses.get("chat_stream", [
++            ChatChunkSchema(delta="FAKE_OPENAI_V2_RESPONSE"),
++        ]):
++            yield chunk
++
+ 
+ @pytest.fixture
+ def fake_openai_v1_http_client() -> FakeOpenAIV1HTTPClient:
+--- a/ai_review/tests/fixtures/clients/openrouter.py
++++ b/ai_review/tests/fixtures/clients/openrouter.py
+@@ -1,4 +1,5 @@
+ from typing import Any
++from collections.abc import AsyncIterator
+ 
+ import pytest
+ from pydantic import HttpUrl, SecretStr
+@@ -15,6 +16,7 @@
+ from ai_review.libs.config.llm.base import OpenRouterLLMConfig
+ from ai_review.libs.config.llm.openrouter import OpenRouterMetaConfig, OpenRouterHTTPClientConfig
+ from ai_review.libs.constants.llm_provider import LLMProvider
++from ai_review.libs.http.sse import ChatChunkSchema
+ from ai_review.services.llm.openrouter.client import OpenRouterLLMClient
+ 
+ 
+@@ -40,6 +42,13 @@
+             ),
+         )
+ 
++    async def chat_stream(self, request: OpenRouterChatRequestSchema) -> AsyncIterator[ChatChunkSchema]:
++        self.calls.append(("chat_stream", {"request": request}))
++        for chunk in self.responses.get("chat_stream", [
++            ChatChunkSchema(delta="FAKE_OPENROUTER_RESPONSE"),
++        ]):
++            yield chunk
++
+ 
+ @pytest.fixture
+ def fake_openrouter_http_client() -> FakeOpenRouterHTTPClient:
+--- a/ai_review/tests/fixtures/services/llm.py
++++ b/ai_review/tests/fixtures/services/llm.py
+@@ -1,7 +1,9 @@
+ from typing import Any
++from collections.abc import AsyncIterator
+ 
+ import pytest
+ 
++from ai_review.libs.http.sse import ChatChunkSchema, TokenUsageSchema
+ from ai_review.services.llm.types import LLMClientProtocol, ChatResultSchema
+ 
+ 
+@@ -23,6 +25,23 @@
+             )
+         )
+ 
++    async def chat_stream(self, prompt: str, prompt_system: str) -> AsyncIterator[ChatChunkSchema]:
++        self.calls.append(("chat_stream", {"prompt": prompt, "prompt_system": prompt_system}))
++
++        stream = self.responses.get(
++            "chat_stream",
++            [
++                ChatChunkSchema(delta="FAKE_"),
++                ChatChunkSchema(delta="RESPONSE"),
++                ChatChunkSchema(
++                    delta="",
++                    usage=TokenUsageSchema(prompt_tokens=21, completion_tokens=21, total_tokens=42),
++                ),
++            ],
++        )
++        for chunk in stream:
++            yield chunk
++
+ 
+ @pytest.fixture
+ def fake_llm_client() -> FakeLLMClient:
+--- a/ai_review/tests/suites/clients/azure_openai/test_schema.py
++++ b/ai_review/tests/suites/clients/azure_openai/test_schema.py
+@@ -114,3 +114,18 @@
+     assert req.messages[1].content == "hello"
+     assert req.max_tokens == 500
+     assert req.temperature == 0.4
++
++
++def test_chat_request_schema_stream_defaults_to_false():
++    req = AzureOpenAIChatRequestSchema(
++        messages=[AzureOpenAIMessage(role="user", content="hi")],
++    )
++    assert req.stream is False
++
++
++def test_chat_request_schema_stream_included_in_payload():
++    req = AzureOpenAIChatRequestSchema(
++        stream=True,
++        messages=[AzureOpenAIMessage(role="user", content="hi")],
++    )
++    assert req.model_dump(exclude_none=True)["stream"] is True
+--- a/ai_review/tests/suites/clients/claude/test_schema.py
++++ b/ai_review/tests/suites/clients/claude/test_schema.py
+@@ -57,3 +57,15 @@
+     assert req.messages[0].content == "hello"
+     assert req.max_tokens == 512
+     assert req.temperature == 0.3
++
++
++def test_chat_request_schema_stream_defaults_to_false():
++    msg = ClaudeMessageSchema(role="user", content="hi")
++    req = ClaudeChatRequestSchema(model="claude-3-sonnet", messages=[msg])
++    assert req.stream is False
++
++
++def test_chat_request_schema_stream_included_in_payload():
++    msg = ClaudeMessageSchema(role="user", content="hi")
++    req = ClaudeChatRequestSchema(model="claude-3-sonnet", stream=True, messages=[msg])
++    assert req.model_dump(exclude_none=True)["stream"] is True
+--- a/ai_review/tests/suites/clients/gemini/test_schema.py
++++ b/ai_review/tests/suites/clients/gemini/test_schema.py
+@@ -103,3 +103,15 @@
+     assert req.contents[0].parts[0].text == "hi"
+     assert req.generation_config.max_output_tokens == 128
+     assert req.system_instruction.parts[0].text == "sys"
++
++
++def test_chat_request_schema_stream_defaults_to_false():
++    content = GeminiContentSchema(role="user", parts=[GeminiPartSchema(text="hi")])
++    req = GeminiChatRequestSchema(contents=[content])
++    assert req.stream is False
++
++
++def test_chat_request_schema_stream_included_in_payload():
++    content = GeminiContentSchema(role="user", parts=[GeminiPartSchema(text="hi")])
++    req = GeminiChatRequestSchema(stream=True, contents=[content])
++    assert req.model_dump(exclude_none=True)["stream"] is True
+--- a/ai_review/tests/suites/clients/openrouter/test_schema.py
++++ b/ai_review/tests/suites/clients/openrouter/test_schema.py
+@@ -55,3 +55,15 @@
+     assert req.messages[0].content == "hello"
+     assert req.max_tokens == 100
+     assert req.temperature == 0.3
++
++
++def test_chat_request_schema_stream_defaults_to_false():
++    msg = OpenRouterMessageSchema(role="user", content="hi")
++    req = OpenRouterChatRequestSchema(model="gpt-4o-mini", messages=[msg])
++    assert req.stream is False
++
++
++def test_chat_request_schema_stream_included_in_payload():
++    msg = OpenRouterMessageSchema(role="user", content="hi")
++    req = OpenRouterChatRequestSchema(model="gpt-4o-mini", stream=True, messages=[msg])
++    assert req.model_dump(exclude_none=True)["stream"] is True
+--- a/ai_review/tests/suites/libs/config/llm/test_meta.py
++++ b/ai_review/tests/suites/libs/config/llm/test_meta.py
+@@ -0,0 +1,37 @@
++from ai_review.libs.config.llm.meta import LLMMetaConfig
++
++
++def test_stream_defaults_to_false():
++    meta = LLMMetaConfig(model="gpt-4o-mini")
++    assert meta.stream is False
++
++
++def test_stream_can_be_enabled():
++    meta = LLMMetaConfig(model="gpt-4o-mini", stream=True)
++    assert meta.stream is True
++
++
++def test_stream_log_progress_defaults_to_true():
++    meta = LLMMetaConfig(model="gpt-4o-mini")
++    assert meta.stream_log_progress is True
++    assert meta.stream_log_chunk_chars == 240
++
++
++def test_stream_log_progress_can_be_disabled():
++    meta = LLMMetaConfig(
++        model="gpt-4o-mini",
++        stream_log_progress=False,
++        stream_log_chunk_chars=100,
++    )
++    assert meta.stream_log_progress is False
++    assert meta.stream_log_chunk_chars == 100
++
++
++def test_stream_log_heartbeat_seconds_has_sensible_default():
++    meta = LLMMetaConfig(model="gpt-4o-mini")
++    assert meta.stream_log_heartbeat_seconds == 12.0
++
++
++def test_stream_log_heartbeat_seconds_can_be_customised():
++    meta = LLMMetaConfig(model="gpt-4o-mini", stream_log_heartbeat_seconds=5.5)
++    assert meta.stream_log_heartbeat_seconds == 5.5
+--- a/ai_review/tests/suites/libs/http/test_client.py
++++ b/ai_review/tests/suites/libs/http/test_client.py
+@@ -0,0 +1,62 @@
++import pytest
++from httpx import AsyncClient, AsyncBaseTransport, Request, Response
++
++from ai_review.libs.http.client import HTTPClient
++
++
++class _CaptureTransport(AsyncBaseTransport):
++    """Records the outgoing request and returns a canned streaming response."""
++
++    def __init__(self, body: bytes = b'data: {"choices":[]}\n\n') -> None:
++        self.captured_request: Request | None = None
++        self.body = body
++
++    async def handle_async_request(self, request: Request) -> Response:
++        self.captured_request = request
++        return Response(200, request=request, content=self.body)
++
++
++@pytest.mark.asyncio
++async def test_stream_post_forces_identity_accept_encoding():
++    """A compressing proxy in front of an SSE endpoint will buffer the whole
++    stream to fill its gzip window, turning a live stream into silence
++    followed by one big burst. We must always ask for uncompressed output."""
++    transport = _CaptureTransport()
++    client = HTTPClient(client=AsyncClient(transport=transport, base_url="https://example.com"))
++
++    lines = [line async for line in client.stream_post("/chat", json={"a": 1}) if line]
++
++    assert lines == ['data: {"choices":[]}']
++    assert transport.captured_request is not None
++    assert transport.captured_request.headers["accept-encoding"] == "identity"
++
++
++@pytest.mark.asyncio
++async def test_stream_post_overrides_client_default_accept_encoding():
++    """Even if the AsyncClient itself sets a compressing Accept-Encoding by
++    default, stream_post must override it with identity."""
++    transport = _CaptureTransport()
++    client = HTTPClient(
++        client=AsyncClient(
++            transport=transport,
++            base_url="https://example.com",
++            headers={"Accept-Encoding": "gzip, deflate"},
++        )
++    )
++
++    async for _ in client.stream_post("/chat", json={"a": 1}):
++        pass
++
++    assert transport.captured_request.headers["accept-encoding"] == "identity"
++
++
++@pytest.mark.asyncio
++async def test_stream_post_preserves_other_headers():
++    transport = _CaptureTransport()
++    client = HTTPClient(client=AsyncClient(transport=transport, base_url="https://example.com"))
++
++    async for _ in client.stream_post("/chat", json={"a": 1}, headers={"X-Custom": "value"}):
++        pass
++
++    assert transport.captured_request.headers["x-custom"] == "value"
++    assert transport.captured_request.headers["accept-encoding"] == "identity"
+--- a/ai_review/tests/suites/libs/http/test_sse.py
++++ b/ai_review/tests/suites/libs/http/test_sse.py
+@@ -0,0 +1,216 @@
++import pytest
++
++from ai_review.libs.http.sse import (
++    ChatChunkSchema,
++    TokenUsageSchema,
++    parse_claude_sse,
++    parse_gemini_sse,
++    parse_ollama_ndjson,
++    parse_openai_sse,
++    parse_openai_v2_sse,
++)
++
++
++async def _collect(gen) -> list[ChatChunkSchema]:
++    return [chunk async for chunk in gen]
++
++
++# ---------- parse_openai_sse ----------
++
++@pytest.mark.asyncio
++async def test_parse_openai_sse_extracts_deltas():
++    lines = iter_async([
++        'data: {"choices":[{"delta":{"content":"Hello"}}]}',
++        'data: {"choices":[{"delta":{"content":" world"}}]}',
++        'data: [DONE]',
++    ])
++    chunks = await _collect(parse_openai_sse(lines))
++
++    deltas = "".join(c.delta for c in chunks)
++    assert deltas == "Hello world"
++    assert all(c.usage is None for c in chunks)
++
++
++@pytest.mark.asyncio
++async def test_parse_openai_sse_extracts_usage_from_final_chunk():
++    lines = iter_async([
++        'data: {"choices":[{"delta":{"content":"hi"}}]}',
++        'data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8}}',
++        'data: [DONE]',
++    ])
++    chunks = await _collect(parse_openai_sse(lines))
++
++    assert chunks[-1].usage == TokenUsageSchema(prompt_tokens=3, completion_tokens=5, total_tokens=8)
++
++
++@pytest.mark.asyncio
++async def test_parse_openai_sse_ignores_non_data_and_garbage():
++    lines = iter_async([
++        ': heartbeat comment',
++        '',
++        'garbage without data prefix',
++        'data: not-json',
++        'data: {"choices":[{"delta":{"content":"ok"}}]}',
++    ])
++    chunks = await _collect(parse_openai_sse(lines))
++
++    assert "".join(c.delta for c in chunks) == "ok"
++
++
++@pytest.mark.asyncio
++async def test_parse_openai_sse_extracts_reasoning_content_field():
++    """GLM/DeepSeek-style extended-thinking streams reasoning separately."""
++    lines = iter_async([
++        'data: {"choices":[{"delta":{"role":"assistant","reasoning_content":"Analyzing"}}]}',
++        'data: {"choices":[{"delta":{"reasoning_content":" the input"}}]}',
++        'data: {"choices":[{"delta":{"content":"Answer"}}]}',
++        'data: [DONE]',
++    ])
++    chunks = await _collect(parse_openai_sse(lines))
++
++    assert "".join(c.reasoning for c in chunks) == "Analyzing the input"
++    assert "".join(c.delta for c in chunks) == "Answer"
++
++
++@pytest.mark.asyncio
++async def test_parse_openai_sse_extracts_reasoning_short_field():
++    """Some providers use `reasoning` instead of `reasoning_content`."""
++    lines = iter_async([
++        'data: {"choices":[{"delta":{"reasoning":"thinking…"}}]}',
++        'data: {"choices":[{"delta":{"content":"done"}}]}',
++    ])
++    chunks = await _collect(parse_openai_sse(lines))
++
++    assert "".join(c.reasoning for c in chunks) == "thinking…"
++    assert "".join(c.delta for c in chunks) == "done"
++
++
++# ---------- parse_openai_v2_sse ----------
++
++@pytest.mark.asyncio
++async def test_parse_openai_v2_sse_extracts_output_text_delta():
++    lines = iter_async([
++        'data: {"type":"response.output_text.delta","delta":"foo"}',
++        'data: {"type":"response.output_text.delta","delta":"bar"}',
++        'data: {"type":"response.completed","response":{"usage":{"input_tokens":2,"output_tokens":4,"total_tokens":6}}}',
++        'data: [DONE]',
++    ])
++    chunks = await _collect(parse_openai_v2_sse(lines))
++
++    assert "".join(c.delta for c in chunks) == "foobar"
++    assert chunks[-1].usage == TokenUsageSchema(prompt_tokens=2, completion_tokens=4, total_tokens=6)
++
++
++# ---------- parse_claude_sse ----------
++
++@pytest.mark.asyncio
++async def test_parse_claude_sse_extracts_text_and_usage():
++    lines = iter_async([
++        'event: message_start',
++        'data: {"type":"message_start","message":{"usage":{"input_tokens":10,"output_tokens":1}}}',
++        'event: content_block_delta',
++        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}',
++        'event: message_delta',
++        'data: {"type":"message_delta","delta":{},"usage":{"output_tokens":7}}',
++        'event: message_stop',
++        'data: {"type":"message_stop"}',
++    ])
++    chunks = await _collect(parse_claude_sse(lines))
++
++    deltas = "".join(c.delta for c in chunks)
++    assert deltas == "Hello"
++
++    usage = next(c.usage for c in chunks if c.usage is not None)
++    assert usage.prompt_tokens == 10
++    assert usage.completion_tokens == 7
++    assert usage.total_tokens == 17
++
++
++# ---------- parse_gemini_sse ----------
++
++@pytest.mark.asyncio
++async def test_parse_gemini_sse_extracts_parts_and_usage():
++    lines = iter_async([
++        'data: {"candidates":[{"content":{"parts":[{"text":"Hel"}]}}]}',
++        'data: {"candidates":[{"content":{"parts":[{"text":"lo"}]}}]}',
++        'data: {"candidates":[{"content":{"parts":[{"text":""}]}}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":6,"totalTokenCount":10}}',
++    ])
++    chunks = await _collect(parse_gemini_sse(lines))
++
++    deltas = "".join(c.delta for c in chunks)
++    assert deltas == "Hello"
++    assert chunks[-1].usage == TokenUsageSchema(prompt_tokens=4, completion_tokens=6, total_tokens=10)
++
++
++@pytest.mark.asyncio
++async def test_parse_gemini_sse_skips_thought_parts():
++    lines = iter_async([
++        'data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"internal"},{"text":"answer"}]}}]}',
++    ])
++    chunks = await _collect(parse_gemini_sse(lines))
++
++    assert "".join(c.delta for c in chunks) == "answer"
++
++
++# ---------- parse_ollama_ndjson ----------
++
++@pytest.mark.asyncio
++async def test_parse_ollama_ndjson_extracts_deltas_and_usage():
++    lines = iter_async([
++        '{"message":{"content":"Hi "},"done":false}',
++        '{"message":{"content":"there"},"done":false}',
++        '{"message":{"content":""},"done":true,"prompt_eval_count":3,"eval_count":5}',
++    ])
++    chunks = await _collect(parse_ollama_ndjson(lines))
++
++    deltas = "".join(c.delta for c in chunks)
++    assert deltas == "Hi there"
++    assert chunks[-1].usage == TokenUsageSchema(prompt_tokens=3, completion_tokens=5, total_tokens=8)
++
++
++@pytest.mark.asyncio
++async def test_parse_ollama_ndjson_ignores_empty_and_garbage():
++    lines = iter_async([
++        '',
++        'not json',
++        '{"message":{"content":"ok"},"done":false}',
++        '{"done":true,"prompt_eval_count":1,"eval_count":2}',
++    ])
++    chunks = await _collect(parse_ollama_ndjson(lines))
++
++    assert "".join(c.delta for c in chunks) == "ok"
++
++
++@pytest.mark.asyncio
++async def test_parse_ollama_ndjson_handles_partial_usage_counts():
++    """Ollama may emit `done` with only one of the two counters populated."""
++    lines = iter_async([
++        '{"message":{"content":"hi"},"done":false}',
++        '{"message":{"content":""},"done":true,"eval_count":5}',
++    ])
++    chunks = await _collect(parse_ollama_ndjson(lines))
++
++    assert chunks[-1].usage == TokenUsageSchema(
++        prompt_tokens=None, completion_tokens=5, total_tokens=5,
++    )
++
++
++@pytest.mark.asyncio
++async def test_parse_ollama_ndjson_handles_missing_usage_counts():
++    """A bare `done` chunk without either counter must not crash."""
++    lines = iter_async([
++        '{"message":{"content":"hi"},"done":false}',
++        '{"message":{"content":""},"done":true}',
++    ])
++    chunks = await _collect(parse_ollama_ndjson(lines))
++
++    assert chunks[-1].usage == TokenUsageSchema(
++        prompt_tokens=None, completion_tokens=None, total_tokens=None,
++    )
++
++
++def iter_async(lines: list[str]):
++    async def gen():
++        for line in lines:
++            yield line
++    return gen()
+--- a/ai_review/tests/suites/libs/llm/test_output_json_parser.py
++++ b/ai_review/tests/suites/libs/llm/test_output_json_parser.py
+@@ -1,4 +1,4 @@
+-from ai_review.libs.llm.output_json_parser import LLMOutputJSONParser, CLEAN_JSON_BLOCK_RE
++from ai_review.libs.llm.output_json_parser import LLMOutputJSONParser, CLEAN_JSON_BLOCK_RE, strip_thinking
+ from ai_review.tests.fixtures.libs.llm.output_json_parser import DummyModel
+ 
+ 
+@@ -153,3 +153,41 @@
+     result = llm_output_json_parser.try_parse(raw)
+ 
+     assert result is None
++
++
++# ---------- strip_thinking / thinking-aware parsing ----------
++
++def test_strip_thinking_removes_think_block():
++    output = '<think>reasoning here</think>{"text": "answer"}'
++    assert strip_thinking(output) == '{"text": "answer"}'
++
++
++def test_strip_thinking_removes_thinking_block_with_ing_suffix():
++    output = '<thinking>chain of thought</thinking>{"text": "answer"}'
++    assert strip_thinking(output) == '{"text": "answer"}'
++
++
++def test_strip_thinking_case_insensitive_and_multiline():
++    output = '<THINK>\nline1\nline2\n</THINK>\n{"text": "x"}'
++    assert strip_thinking(output) == '{"text": "x"}'
++
++
++def test_strip_thinking_leaves_content_without_thinking_untouched():
++    output = '{"text": "plain"}'
++    assert strip_thinking(output) == '{"text": "plain"}'
++
++
++def test_parse_output_extracts_json_after_thinking_block(llm_output_json_parser: LLMOutputJSONParser):
++    """Model reasoning (thinking) must not be mistaken for the answer."""
++    output = '<think>I should return a tool call</think>\n{"text": "real-answer"}'
++    result = llm_output_json_parser.parse_output(output)
++
++    assert isinstance(result, DummyModel)
++    assert result.text == "real-answer"
++
++
++def test_parse_output_returns_none_when_only_thinking(llm_output_json_parser: LLMOutputJSONParser):
++    output = '<think>only reasoning, no answer</think>'
++    result = llm_output_json_parser.parse_output(output)
++
++    assert result is None
+--- a/ai_review/tests/suites/libs/llm/test_stream_logger.py
++++ b/ai_review/tests/suites/libs/llm/test_stream_logger.py
+@@ -0,0 +1,183 @@
++from ai_review.libs.llm.stream_logger import StreamSegmentLogger
++
++
++def _make():
++    answers: list[tuple[str, int, int]] = []
++    thinkings: list[tuple[str, int, int]] = []
++
++    def on_answer(piece: str, size: int, total: int) -> None:
++        answers.append((piece, size, total))
++
++    def on_thinking(piece: str, size: int, total: int) -> None:
++        thinkings.append((piece, size, total))
++
++    return answers, thinkings, on_answer, on_thinking
++
++
++def test_feed_without_tags_flushes_answer_by_threshold():
++    answers, thinkings, on_answer, on_thinking = _make()
++    sl = StreamSegmentLogger(5, on_answer, on_thinking)
++
++    # No '<' at all → the buffer can be flushed immediately, and every push
++    # that reaches the threshold triggers an emit.
++    sl.feed("hello")     # 5 chars → emit "hello"
++    sl.feed(" world")    # 6 chars → emit " world"
++    sl.feed("!!")        # 2 chars — under threshold, held until flush
++    sl.flush()
++
++    joined = "".join(p for p, _, _ in answers)
++    assert joined == "hello world!!"
++    assert thinkings == []
++
++
++def test_pending_lt_holds_back_potential_tag_prefix():
++    answers, thinkings, on_answer, on_thinking = _make()
++    sl = StreamSegmentLogger(1000, on_answer, on_thinking)
++
++    # "hi <" could be the start of "<think>"; the "<" tail must not leak into
++    # the answer channel prematurely — otherwise the tag itself would be
++    # split between "answer" and "thinking" channels.
++    sl.feed("hi <")
++    assert answers == []
++    # Feed the rest of the tag → routed to thinking channel.
++    sl.feed("think>reason</think>bye")
++    sl.flush()
++
++    assert "".join(p for p, _, _ in answers) == "hi bye"
++    assert "".join(p for p, _, _ in thinkings) == "reason"
++
++
++def test_lonely_lt_that_is_not_a_tag_is_still_emitted_on_flush():
++    answers, thinkings, on_answer, on_thinking = _make()
++    sl = StreamSegmentLogger(3, on_answer, on_thinking)
++
++    sl.feed("value < 5 is small")
++    sl.flush()
++
++    assert "".join(p for p, _, _ in answers) == "value < 5 is small"
++
++
++def test_thinking_block_is_routed_to_thinking_channel():
++    answers, thinkings, on_answer, on_thinking = _make()
++    sl = StreamSegmentLogger(4, on_answer, on_thinking)
++
++    sl.feed("hi <think>reasoning here</think>bye")
++    sl.flush()
++
++    assert "".join(p for p, _, _ in answers) == "hi bye"
++    assert "".join(p for p, _, _ in thinkings) == "reasoning here"
++
++
++def test_thinking_tag_can_be_uppercase_and_thinking_variant():
++    answers, thinkings, on_answer, on_thinking = _make()
++    sl = StreamSegmentLogger(4, on_answer, on_thinking)
++
++    sl.feed("A<THINKING>deep</THINKING>B<Think>more</Think>C")
++    sl.flush()
++
++    assert "".join(p for p, _, _ in answers) == "ABC"
++    assert "".join(p for p, _, _ in thinkings) == "deepmore"
++
++
++def test_open_tag_split_across_two_chunks_is_detected():
++    answers, thinkings, on_answer, on_thinking = _make()
++    sl = StreamSegmentLogger(3, on_answer, on_thinking)
++
++    sl.feed("start <thi")
++    sl.feed("nking>brain</thinking>end")
++    sl.flush()
++
++    assert "".join(p for p, _, _ in answers) == "start end"
++    assert "".join(p for p, _, _ in thinkings) == "brain"
++
++
++def test_close_tag_split_across_two_chunks_is_detected():
++    answers, thinkings, on_answer, on_thinking = _make()
++    sl = StreamSegmentLogger(3, on_answer, on_thinking)
++
++    sl.feed("<think>reason</thi")
++    sl.feed("nk>after")
++    sl.flush()
++
++    assert "".join(p for p, _, _ in answers) == "after"
++    assert "".join(p for p, _, _ in thinkings) == "reason"
++
++
++def test_flush_releases_remainder_that_never_reached_threshold():
++    answers, thinkings, on_answer, on_thinking = _make()
++    sl = StreamSegmentLogger(1000, on_answer, on_thinking)
++
++    sl.feed("x")
++    assert answers == []
++    sl.flush()
++
++    assert answers == [("x", 1, 1)]
++
++
++def test_running_totals_are_per_channel():
++    answers, thinkings, on_answer, on_thinking = _make()
++    sl = StreamSegmentLogger(2, on_answer, on_thinking)
++
++    sl.feed("aa<think>bb</think>cc<think>dd</think>ee")
++    sl.flush()
++
++    ans_totals = [t for _, _, t in answers]
++    think_totals = [t for _, _, t in thinkings]
++    # answers accumulate: aa (2), cc (2→4), ee (2→6)
++    assert ans_totals[-1] == 6
++    # thinkings accumulate: bb (2), dd (2→4)
++    assert think_totals[-1] == 4
++
++
++def test_unterminated_thinking_block_is_still_flushed_on_flush():
++    answers, thinkings, on_answer, on_thinking = _make()
++    sl = StreamSegmentLogger(4, on_answer, on_thinking)
++
++    sl.feed("intro <think>never closed…")
++    sl.flush()
++
++    assert "".join(p for p, _, _ in answers) == "intro "
++    assert "".join(p for p, _, _ in thinkings) == "never closed…"
++
++
++def test_empty_feed_is_noop():
++    answers, thinkings, on_answer, on_thinking = _make()
++    sl = StreamSegmentLogger(4, on_answer, on_thinking)
++
++    sl.feed("")
++    sl.flush()
++
++    assert answers == []
++    assert thinkings == []
++
++
++def test_feed_thinking_bypasses_tag_parsing():
++    """Reasoning field content goes straight to the thinking channel."""
++    answers, thinkings, on_answer, on_thinking = _make()
++    sl = StreamSegmentLogger(3, on_answer, on_thinking)
++
++    sl.feed_thinking("plain reasoning text ")
++    sl.feed_thinking("without any tags")
++    sl.flush()
++
++    assert answers == []
++    assert "".join(p for p, _, _ in thinkings) == "plain reasoning text without any tags"
++
++
++def test_pending_and_total_observability_helpers():
++    answers, thinkings, on_answer, on_thinking = _make()
++    sl = StreamSegmentLogger(10, on_answer, on_thinking)
++
++    sl.feed("hi")
++    assert sl.pending_answer_chars == 2
++    assert sl.answer_total == 0
++
++    sl.feed_thinking("thought")
++    assert sl.pending_thinking_chars == 7
++    assert sl.thinking_total == 0
++
++    sl.flush()
++    assert sl.answer_total == 2
++    assert sl.thinking_total == 7
++    assert sl.pending_answer_chars == 0
++    assert sl.pending_thinking_chars == 0
+--- a/ai_review/tests/suites/services/llm/openai/test_client.py
++++ b/ai_review/tests/suites/services/llm/openai/test_client.py
+@@ -1,5 +1,6 @@
+ import pytest
+ 
++from ai_review.libs.http.sse import ChatChunkSchema, TokenUsageSchema
+ from ai_review.services.llm.openai.client import OpenAILLMClient
+ from ai_review.services.llm.types import ChatResultSchema
+ from ai_review.tests.fixtures.clients.openai import FakeOpenAIV1HTTPClient, FakeOpenAIV2HTTPClient
+@@ -37,3 +38,28 @@
+     assert result.completion_tokens == 10
+ 
+     assert fake_openai_v2_http_client.calls[0][0] == "chat"
++
++
++@pytest.mark.asyncio
++@pytest.mark.usefixtures("openai_v1_http_client_config")
++async def test_openai_llm_chat_stream_v1(
++        openai_llm_client: OpenAILLMClient,
++        fake_openai_v1_http_client: FakeOpenAIV1HTTPClient
++):
++    fake_openai_v1_http_client.responses["chat_stream"] = [
++        ChatChunkSchema(delta="Hello "),
++        ChatChunkSchema(delta="world"),
++        ChatChunkSchema(
++            delta="",
++            usage=TokenUsageSchema(prompt_tokens=3, completion_tokens=4, total_tokens=7),
++        ),
++    ]
++
++    chunks = [chunk async for chunk in openai_llm_client.chat_stream("prompt", "prompt_system")]
++
++    assert "".join(c.delta for c in chunks) == "Hello world"
++    assert chunks[-1].usage.total_tokens == 7
++    assert fake_openai_v1_http_client.calls[0][0] == "chat_stream"
++
++    sent_request = fake_openai_v1_http_client.calls[0][1]["request"]
++    assert sent_request.stream is True
+--- a/ai_review/tests/suites/services/review/gateway/test_review_direct_llm_gateway.py
++++ b/ai_review/tests/suites/services/review/gateway/test_review_direct_llm_gateway.py
+@@ -1,5 +1,8 @@
++import asyncio
++
+ import pytest
+ 
++from ai_review.libs.http.sse import ChatChunkSchema, TokenUsageSchema
+ from ai_review.services.llm.types import ChatResultSchema
+ from ai_review.services.review.gateway.review_direct_llm_gateway import ReviewDirectLLMGateway
+ from ai_review.tests.fixtures.services.artifacts import FakeArtifactsService
+@@ -89,3 +92,235 @@
+     assert result is None
+     assert "LLM request failed" in output
+     assert "RuntimeError" in output
++
++
++@pytest.mark.asyncio
++async def test_ask_stream_yields_deltas_and_reports_cost(
++        review_direct_llm_gateway: ReviewDirectLLMGateway,
++        fake_llm_client: FakeLLMClient,
++        fake_cost_service: FakeCostService,
++        fake_artifacts_service: FakeArtifactsService,
++):
++    """ask_stream should yield deltas and still emit complete/cost/artifacts."""
++    fake_llm_client.responses["chat_stream"] = [
++        ChatChunkSchema(delta="Hello "),
++        ChatChunkSchema(delta="world"),
++        ChatChunkSchema(
++            delta="",
++            usage=TokenUsageSchema(prompt_tokens=5, completion_tokens=7, total_tokens=12),
++        ),
++    ]
++
++    collected: list[str] = []
++    async for delta in review_direct_llm_gateway.ask_stream("PROMPT", "SYSTEM_PROMPT"):
++        collected.append(delta)
++
++    assert "".join(collected) == "Hello world"
++
++    assert any(call[0] == "chat_stream" for call in fake_llm_client.calls)
++    calculate_calls = [call for call in fake_cost_service.calls if call[0] == "calculate"]
++    assert len(calculate_calls) == 1
++    assert calculate_calls[0][1]["result"].prompt_tokens == 5
++    assert calculate_calls[0][1]["result"].completion_tokens == 7
++
++    save_calls = [call for call in fake_artifacts_service.calls if call[0] == "save_llm"]
++    assert len(save_calls) == 1
++    assert save_calls[0][1]["response"] == "Hello world"
++
++
++@pytest.mark.asyncio
++async def test_ask_stream_handles_llm_error(
++        capsys: pytest.CaptureFixture,
++        fake_llm_client: FakeLLMClient,
++        review_direct_llm_gateway: ReviewDirectLLMGateway,
++):
++    async def failing_stream(prompt: str, prompt_system: str):
++        raise RuntimeError("LLM stream failed")
++        yield  # pragma: no cover
++
++    fake_llm_client.chat_stream = failing_stream
++
++    collected: list[str] = []
++    async for delta in review_direct_llm_gateway.ask_stream("PROMPT", "SYSTEM_PROMPT"):
++        collected.append(delta)
++
++    assert collected == []
++    output = capsys.readouterr().out
++    assert "LLM request failed" in output
++
++
++@pytest.mark.asyncio
++async def test_ask_stream_logs_progress_by_chunks(
++        capsys: pytest.CaptureFixture,
++        monkeypatch: pytest.MonkeyPatch,
++        review_direct_llm_gateway: ReviewDirectLLMGateway,
++        fake_llm_client: FakeLLMClient,
++):
++    """Progress must be logged in chunks so the user is not left in the dark."""
++    monkeypatch.setattr("ai_review.config.settings.llm.meta.stream_log_progress", True)
++    monkeypatch.setattr("ai_review.config.settings.llm.meta.stream_log_chunk_chars", 10)
++
++    fake_llm_client.responses["chat_stream"] = [
++        ChatChunkSchema(delta="1234567890"),
++        ChatChunkSchema(delta="abcde"),
++        ChatChunkSchema(delta="XYZ"),
++        ChatChunkSchema(
++            delta="",
++            usage=TokenUsageSchema(prompt_tokens=1, completion_tokens=1, total_tokens=2),
++        ),
++    ]
++
++    async for _ in review_direct_llm_gateway.ask_stream("P", "S"):
++        pass
++
++    output = capsys.readouterr().out
++    assert "Streaming started" in output
++    assert "Streaming progress" in output
++    # 10 chars → first flush; remaining 8 chars → tail flush
++    assert output.count("Streaming progress") == 2
++    assert "Streaming finished, 18 chars total" in output
++
++
++@pytest.mark.asyncio
++async def test_ask_stream_progress_logging_can_be_disabled(
++        capsys: pytest.CaptureFixture,
++        monkeypatch: pytest.MonkeyPatch,
++        review_direct_llm_gateway: ReviewDirectLLMGateway,
++        fake_llm_client: FakeLLMClient,
++):
++    monkeypatch.setattr("ai_review.config.settings.llm.meta.stream_log_progress", False)
++
++    fake_llm_client.responses["chat_stream"] = [
++        ChatChunkSchema(delta="hello"),
++        ChatChunkSchema(
++            delta="",
++            usage=TokenUsageSchema(prompt_tokens=1, completion_tokens=1, total_tokens=2),
++        ),
++    ]
++
++    async for _ in review_direct_llm_gateway.ask_stream("P", "S"):
++        pass
++
++    output = capsys.readouterr().out
++    assert "Streaming started" not in output
++    assert "Streaming progress" not in output
++    assert "Streaming finished" not in output
++
++
++@pytest.mark.asyncio
++async def test_ask_stream_routes_thinking_blocks_to_separate_log_channel(
++        capsys: pytest.CaptureFixture,
++        monkeypatch: pytest.MonkeyPatch,
++        review_direct_llm_gateway: ReviewDirectLLMGateway,
++        fake_llm_client: FakeLLMClient,
++):
++    """<think>...</think> content must show up as a separate log line."""
++    monkeypatch.setattr("ai_review.config.settings.llm.meta.stream_log_progress", True)
++    monkeypatch.setattr("ai_review.config.settings.llm.meta.stream_log_chunk_chars", 5)
++
++    # Simulate a reasoning model that streams its thinking before the answer,
++    # with tag boundaries split across chunk boundaries (realistic case).
++    fake_llm_client.responses["chat_stream"] = [
++        ChatChunkSchema(delta="hello <thi"),
++        ChatChunkSchema(delta="nk>step one, step two"),
++        ChatChunkSchema(delta=", conclusion</think>"),
++        ChatChunkSchema(delta=" world"),
++        ChatChunkSchema(
++            delta="",
++            usage=TokenUsageSchema(prompt_tokens=1, completion_tokens=1, total_tokens=2),
++        ),
++    ]
++
++    collected: list[str] = []
++    async for delta in review_direct_llm_gateway.ask_stream("P", "S"):
++        collected.append(delta)
++
++    # The stream downstream is unchanged — the parser upstream will strip
++    # <think> via strip_thinking(); we only split channels for logging.
++    assert "".join(collected) == "hello <think>step one, step two, conclusion</think> world"
++
++    output = capsys.readouterr().out
++    assert "Streaming thinking" in output
++    assert "Streaming progress" in output
++
++    progress_lines = [line for line in output.splitlines() if "Streaming progress" in line]
++    thinking_lines = [line for line in output.splitlines() if "Streaming thinking" in line]
++
++    # Answer channel must not contain either the tag or the reasoning text.
++    for line in progress_lines:
++        assert "<think" not in line
++        assert "</think" not in line
++        assert "step one" not in line
++        assert "conclusion" not in line
++
++    # Thinking channel must contain the reasoning content.
++    thinking_dump = "\n".join(thinking_lines)
++    assert "step one" in thinking_dump
++    assert "conclusion" in thinking_dump
++
++
++@pytest.mark.asyncio
++async def test_ask_stream_routes_reasoning_field_to_thinking_channel(
++        capsys: pytest.CaptureFixture,
++        monkeypatch: pytest.MonkeyPatch,
++        review_direct_llm_gateway: ReviewDirectLLMGateway,
++        fake_llm_client: FakeLLMClient,
++):
++    """GLM/DeepSeek `reasoning_content` field must also feed the thinking channel."""
++    monkeypatch.setattr("ai_review.config.settings.llm.meta.stream_log_progress", True)
++    monkeypatch.setattr("ai_review.config.settings.llm.meta.stream_log_chunk_chars", 5)
++
++    fake_llm_client.responses["chat_stream"] = [
++        ChatChunkSchema(reasoning="Analyzing request "),
++        ChatChunkSchema(reasoning="carefully now"),
++        ChatChunkSchema(delta="final answer"),
++        ChatChunkSchema(
++            delta="",
++            usage=TokenUsageSchema(prompt_tokens=1, completion_tokens=1, total_tokens=2),
++        ),
++    ]
++
++    collected: list[str] = []
++    async for delta in review_direct_llm_gateway.ask_stream("P", "S"):
++        collected.append(delta)
++
++    # Downstream still receives ONLY the answer — reasoning is log-only.
++    assert "".join(collected) == "final answer"
++
++    output = capsys.readouterr().out
++    assert "Streaming thinking" in output
++    thinking_lines = [line for line in output.splitlines() if "Streaming thinking" in line]
++    thinking_dump = "\n".join(thinking_lines)
++    assert "Analyzing" in thinking_dump
++    assert "carefully" in thinking_dump
++
++
++@pytest.mark.asyncio
++async def test_ask_stream_emits_heartbeat_on_slow_provider(
++        capsys: pytest.CaptureFixture,
++        monkeypatch: pytest.MonkeyPatch,
++        review_direct_llm_gateway: ReviewDirectLLMGateway,
++        fake_llm_client: FakeLLMClient,
++):
++    """When the model is silent longer than heartbeat_seconds, we log why."""
++    monkeypatch.setattr("ai_review.config.settings.llm.meta.stream_log_progress", True)
++    monkeypatch.setattr("ai_review.config.settings.llm.meta.stream_log_chunk_chars", 1000)
++    monkeypatch.setattr("ai_review.config.settings.llm.meta.stream_log_heartbeat_seconds", 0.05)
++
++    async def slow_stream(prompt, prompt_system):
++        # First chunk is delayed longer than the heartbeat interval,
++        # simulating a provider that's silent while the model thinks.
++        await asyncio.sleep(0.18)
++        yield ChatChunkSchema(delta="hello")
++        yield ChatChunkSchema(
++            delta="",
++            usage=TokenUsageSchema(prompt_tokens=1, completion_tokens=1, total_tokens=2),
++        )
++
++    fake_llm_client.chat_stream = slow_stream
++
++    async for _ in review_direct_llm_gateway.ask_stream("P", "S"):
++        pass
++
++    output = capsys.readouterr().out
++    assert "Streaming heartbeat" in output
