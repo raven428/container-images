@@ -1,0 +1,1301 @@
+--- a/ai_review/prompts/default_context.md
++++ b/ai_review/prompts/default_context.md
+@@ -12,3 +12,11 @@
+ - If there are many issues, prioritize the most important ones (maximum 50 comments).
+ - Keep comments short, actionable, and relevant.
+ - Do not comment on unchanged code or stylistic preferences unless they clearly affect maintainability.
++
++If an "Existing Review Discussion" section is provided, use it as context across files:
++- Do NOT repeat points already raised in the discussion.
++- Focus on finding NEW issues not yet covered.
++- Threads marked [human replied] require a follow-up if the developer raised a concern or asked
++  a question — reply only if there is something meaningful to add.
++- Threads marked [no human reply yet] are informational context only — do NOT add a new comment
++  on the same line unless you have a genuinely new observation to contribute.
+--- a/ai_review/prompts/default_inline.md
++++ b/ai_review/prompts/default_inline.md
+@@ -6,3 +6,11 @@
+ - improvements for readability or best practices.
+ 
+ Keep comments short, actionable, and relevant.  
++
++If an "Existing Review Discussion" section is provided, use it as context:
++- Do NOT repeat points already raised in the discussion.
++- Focus on finding NEW issues not yet covered.
++- Threads marked [human replied] require a follow-up if the developer raised a concern or asked
++  a question — reply only if there is something meaningful to add.
++- Threads marked [no human reply yet] are informational context only — do NOT add a new comment
++  on the same line unless you have a genuinely new observation to contribute.
+--- a/ai_review/prompts/default_summary.md
++++ b/ai_review/prompts/default_summary.md
+@@ -1,3 +1,7 @@
+ - Write a short summary of the overall review.
+ - Mention what was done well and highlight the most important issues or improvements.
+ - Keep it clear and concise (2–4 sentences).  
++
++If an "Existing Review Discussion" section is provided, incorporate it:
++- Acknowledge points raised by developers.
++- Provide a fresh assessment, do not repeat previous summary text verbatim.
+--- a/ai_review/services/prompt/service.py
++++ b/ai_review/services/prompt/service.py
+@@ -5,6 +5,7 @@
+ from ai_review.services.prompt.tools import (
+     format_file,
+     format_files,
++    format_review_context,
+     format_thread,
+     format_traces,
+     normalize_prompt,
+@@ -45,33 +46,45 @@
+         )
+ 
+     @classmethod
+-    def build_inline_request(cls, diff: DiffFileSchema, context: PromptContextSchema) -> str:
++    def build_inline_request(
++            cls,
++            diff: DiffFileSchema,
++            context: PromptContextSchema,
++            threads: list[ReviewThreadSchema] | None = None,
++    ) -> str:
+         prompt = cls.prepare_prompt(settings.prompt.load_inline(), context)
+-        return (
+-            f"{prompt}\n\n"
+-            f"## Diff\n\n"
+-            f"{format_file(diff)}"
+-        )
++        result = f"{prompt}\n\n## Diff\n\n{format_file(diff)}"
++        if threads:
++            result += f"\n\n## Existing Review Discussion\n\n{format_review_context(threads)}"
++        return result
+ 
+     @classmethod
+-    def build_summary_request(cls, diffs: list[DiffFileSchema], context: PromptContextSchema) -> str:
++    def build_summary_request(
++            cls,
++            diffs: list[DiffFileSchema],
++            context: PromptContextSchema,
++            threads: list[ReviewThreadSchema] | None = None,
++    ) -> str:
+         prompt = cls.prepare_prompt(settings.prompt.load_summary(), context)
+         changes = format_files(diffs)
+-        return (
+-            f"{prompt}\n\n"
+-            f"## Changes\n\n"
+-            f"{changes}\n"
+-        )
++        result = f"{prompt}\n\n## Changes\n\n{changes}\n"
++        if threads:
++            result += f"\n## Existing Review Discussion\n\n{format_review_context(threads)}"
++        return result
+ 
+     @classmethod
+-    def build_context_request(cls, diffs: list[DiffFileSchema], context: PromptContextSchema) -> str:
++    def build_context_request(
++            cls,
++            diffs: list[DiffFileSchema],
++            context: PromptContextSchema,
++            threads: list[ReviewThreadSchema] | None = None,
++    ) -> str:
+         prompt = cls.prepare_prompt(settings.prompt.load_context(), context)
+         changes = format_files(diffs)
+-        return (
+-            f"{prompt}\n\n"
+-            f"## Diff\n\n"
+-            f"{changes}\n"
+-        )
++        result = f"{prompt}\n\n## Diff\n\n{changes}\n"
++        if threads:
++            result += f"\n## Existing Review Discussion\n\n{format_review_context(threads)}"
++        return result
+ 
+     @classmethod
+     def build_inline_reply_request(
+--- a/ai_review/services/prompt/tools.py
++++ b/ai_review/services/prompt/tools.py
+@@ -3,10 +3,15 @@
+ from ai_review.libs.logger import get_logger
+ from ai_review.services.agent.loop.schema import AgentTraceSchema
+ from ai_review.services.diff.schema import DiffFileSchema
+-from ai_review.services.vcs.types import ReviewThreadSchema
++from ai_review.services.vcs.types import ReviewThreadSchema, ThreadKind
+ 
+ logger = get_logger("PROMPT_TOOLS")
+ 
++_AI_TAGS_RE = re.compile(
++    r"#ai-review-(inline-reply|inline-fallback|inline|summary-reply|summary)",
++    re.IGNORECASE,
++)
++
+ 
+ def format_file(diff: DiffFileSchema) -> str:
+     return f"# File: {diff.file}\n{diff.diff}\n"
+@@ -16,6 +21,55 @@
+     return "\n\n".join(map(format_file, diffs))
+ 
+ 
++def strip_ai_tags(body: str) -> str:
++    return _AI_TAGS_RE.sub("", body or "").strip()
++
++
++_INLINE_AI_TAGS_RE = re.compile(
++    r"#ai-review-(inline-reply|inline)",
++    re.IGNORECASE,
++)
++
++_SUMMARY_AI_TAGS_RE = re.compile(
++    r"#ai-review-(summary-reply|summary)",
++    re.IGNORECASE,
++)
++
++
++def _thread_has_human_reply(thread: ReviewThreadSchema) -> bool:
++    if not thread.comments:
++        return False
++    last_body = thread.comments[-1].body or ""
++    tag_re = (
++        _INLINE_AI_TAGS_RE
++        if thread.kind == ThreadKind.INLINE
++        else _SUMMARY_AI_TAGS_RE
++    )
++    return not bool(tag_re.search(last_body))
++
++
++def format_review_context(threads: list[ReviewThreadSchema]) -> str:
++    if not threads:
++        return "No existing discussion."
++
++    lines: list[str] = []
++    for thread in threads:
++        if not thread.comments:
++            continue
++        location = f"{thread.file}:{thread.line}" if thread.file else "general"
++        status = "human replied" if _thread_has_human_reply(thread) else "no human reply yet"
++        lines.append(f"### {location} [{status}]")
++        for comment in thread.comments:
++            user = (comment.author.name or comment.author.username or "User").strip()
++            body = strip_ai_tags(comment.body)
++            if not body:
++                continue
++            lines.append(f"- {user}: {body}")
++        lines.append("")
++
++    return "\n".join(lines).strip()
++
++
+ def format_thread(thread: ReviewThreadSchema) -> str:
+     if not thread.comments:
+         return "No comments in thread."
+--- a/ai_review/services/prompt/types.py
++++ b/ai_review/services/prompt/types.py
+@@ -19,13 +19,28 @@
+     ) -> str:
+         ...
+ 
+-    def build_inline_request(self, diff: DiffFileSchema, context: PromptContextSchema) -> str:
++    def build_inline_request(
++            self,
++            diff: DiffFileSchema,
++            context: PromptContextSchema,
++            threads: list[ReviewThreadSchema] | None = None,
++    ) -> str:
+         ...
+ 
+-    def build_summary_request(self, diffs: list[DiffFileSchema], context: PromptContextSchema) -> str:
++    def build_summary_request(
++            self,
++            diffs: list[DiffFileSchema],
++            context: PromptContextSchema,
++            threads: list[ReviewThreadSchema] | None = None,
++    ) -> str:
+         ...
+ 
+-    def build_context_request(self, diffs: list[DiffFileSchema], context: PromptContextSchema) -> str:
++    def build_context_request(
++            self,
++            diffs: list[DiffFileSchema],
++            context: PromptContextSchema,
++            threads: list[ReviewThreadSchema] | None = None,
++    ) -> str:
+         ...
+ 
+     def build_inline_reply_request(
+--- a/ai_review/services/review/gateway/review_comment_gateway.py
++++ b/ai_review/services/review/gateway/review_comment_gateway.py
+@@ -18,18 +18,37 @@
+         self.vcs = vcs
+         self.artifacts = artifacts
+ 
++    @staticmethod
++    def _has_ai_tag(thread: ReviewThreadSchema) -> bool:
++        inline_tags = (settings.review.inline_tag, settings.review.inline_reply_tag)
++        return (
++            bool(thread.comments)
++            and any(any(tag in c.body for tag in inline_tags) for c in thread.comments)
++        )
++
++    @staticmethod
++    def _human_replied_last(thread: ReviewThreadSchema) -> bool:
++        inline_tags = (settings.review.inline_tag, settings.review.inline_reply_tag)
++        return (
++            bool(thread.comments)
++            and not any(tag in thread.comments[-1].body for tag in inline_tags)
++        )
++
+     async def get_inline_threads(self) -> list[ReviewThreadSchema]:
+         threads = await self.vcs.get_inline_threads()
+-        inline_tags = (settings.review.inline_tag, settings.review.inline_reply_tag)
+         inline_threads = [
+             thread for thread in threads
+-            if thread.comments
+-            and any(any(tag in c.body for tag in inline_tags) for c in thread.comments)
+-            and not any(tag in thread.comments[-1].body for tag in inline_tags)
++            if self._has_ai_tag(thread) and self._human_replied_last(thread)
+         ]
+         logger.info(f"Detected {len(inline_threads)}/{len(threads)} AI inline threads")
+         return inline_threads
+ 
++    async def get_all_inline_threads(self) -> list[ReviewThreadSchema]:
++        threads = await self.vcs.get_inline_threads()
++        all_ai_threads = [thread for thread in threads if self._has_ai_tag(thread)]
++        logger.info(f"Detected {len(all_ai_threads)}/{len(threads)} AI inline threads (all)")
++        return all_ai_threads
++
+     async def get_summary_threads(self) -> list[ReviewThreadSchema]:
+         threads = await self.vcs.get_general_threads()
+         summary_tags = (
+--- a/ai_review/services/review/gateway/types.py
++++ b/ai_review/services/review/gateway/types.py
+@@ -26,6 +26,9 @@
+     async def get_inline_threads(self) -> list[ReviewThreadSchema]:
+         ...
+ 
++    async def get_all_inline_threads(self) -> list[ReviewThreadSchema]:
++        ...
++
+     async def get_summary_threads(self) -> list[ReviewThreadSchema]:
+         ...
+ 
+--- a/ai_review/services/review/runner/context.py
++++ b/ai_review/services/review/runner/context.py
+@@ -40,17 +40,18 @@
+     async def run(self) -> None:
+         await hook.emit_context_review_start()
+ 
+-        comments = await self.review_comment_gateway.get_inline_comments()
+-        if comments:
+-            logger.info(f"Detected {len(comments)} existing AI inline comments, skipping context review")
+-            return
+-
+         review_info = await self.vcs.get_review_info()
+         changed_files = self.policy.apply_for_files(review_info.changed_files)
+         if not changed_files:
+             logger.info("No files to review for context review")
+             return
+ 
++        all_threads = await self.review_comment_gateway.get_all_inline_threads()
++        existing_ai = await self.review_comment_gateway.get_inline_comments()
++        existing_ai_locs = {
++            (c.file, c.line) for c in existing_ai if c.file is not None and c.line is not None
++        }
++
+         logger.info(f"Starting context inline review: {len(changed_files)} files changed")
+ 
+         rendered_files = self.diff.render_files(
+@@ -60,14 +61,17 @@
+             head_sha=review_info.head_sha,
+         )
+         prompt_context = build_prompt_context_from_review_info(review_info)
+-        prompt = self.prompt.build_context_request(rendered_files, prompt_context)
++        prompt = self.prompt.build_context_request(rendered_files, prompt_context, threads=all_threads)
+         prompt_system = self.prompt.build_system_context_request(prompt_context)
+         prompt_result = await self.review_llm_gateway.ask(prompt, prompt_system)
+ 
+         comments = self.inline_comment.parse_model_output(prompt_result).dedupe()
+         comments.root = self.policy.apply_for_context_comments(comments.root)
++        comments.root = [
++            c for c in comments.root if (c.file, c.line) not in existing_ai_locs
++        ]
+         if not comments.root:
+-            logger.info("No inline comments from context review")
++            logger.info("No new inline comments from context review")
+             return
+ 
+         logger.info(f"Posting {len(comments.root)} inline comments (context review)")
+--- a/ai_review/services/review/runner/inline.py
++++ b/ai_review/services/review/runner/inline.py
+@@ -11,5 +11,5 @@
+ from ai_review.services.review.internal.inline.types import InlineCommentServiceProtocol
+ from ai_review.services.review.runner.types import ReviewRunnerProtocol
+-from ai_review.services.vcs.types import ReviewInfoSchema, VCSClientProtocol
++from ai_review.services.vcs.types import ReviewInfoSchema, ReviewThreadSchema, VCSClientProtocol
+ 
+ logger = get_logger("INLINE_REVIEW_RUNNER")
+@@ -38,7 +38,13 @@
+         self.review_llm_gateway = review_llm_gateway
+         self.review_comment_gateway = review_comment_gateway
+ 
+-    async def process_file(self, file: str, review_info: ReviewInfoSchema) -> None:
++    async def process_file(
++            self,
++            file: str,
++            review_info: ReviewInfoSchema,
++            file_threads: list[ReviewThreadSchema],
++            existing_ai_locs: set[tuple[str | None, int | None]],
++    ) -> None:
+         raw_diff = self.git.get_diff_for_file(review_info.base_sha, review_info.head_sha, file)
+         if not raw_diff.strip():
+             logger.debug(f"No diff for {file}, skipping")
+@@ -51,14 +57,17 @@
+             raw_diff=raw_diff,
+         )
+         prompt_context = build_prompt_context_from_review_info(review_info)
+-        prompt = self.prompt.build_inline_request(rendered_file, prompt_context)
++        prompt = self.prompt.build_inline_request(rendered_file, prompt_context, threads=file_threads)
+         prompt_system = self.prompt.build_system_inline_request(prompt_context)
+         prompt_result = await self.review_llm_gateway.ask(prompt, prompt_system)
+ 
+         comments = self.inline_comment.parse_model_output(prompt_result).dedupe()
+         comments.root = self.policy.apply_for_inline_comments(comments.root)
++        comments.root = [
++            c for c in comments.root if (c.file, c.line) not in existing_ai_locs
++        ]
+         if not comments.root:
+-            logger.info(f"No inline comments for file: {file}")
++            logger.info(f"No new inline comments for file: {file}")
+             return
+ 
+         logger.info(f"Posting {len(comments.root)} inline comments to {file}")
+@@ -67,17 +76,22 @@
+     async def run(self) -> None:
+         await hook.emit_inline_review_start()
+ 
+-        comments = await self.review_comment_gateway.get_inline_comments()
+-        if comments:
+-            logger.info(f"Detected {len(comments)} existing AI inline comments, skipping inline review")
+-            return
+-
+         review_info = await self.vcs.get_review_info()
++        all_threads = await self.review_comment_gateway.get_all_inline_threads()
++        existing_ai = await self.review_comment_gateway.get_inline_comments()
++        existing_ai_locs = {
++            (c.file, c.line) for c in existing_ai if c.file is not None and c.line is not None
++        }
++
+         logger.info(f"Starting inline review: {len(review_info.changed_files)} files changed")
+ 
+         changed_files = self.policy.apply_for_files(review_info.changed_files)
+         await bounded_gather([
+-            self.process_file(changed_file, review_info)
+-            for changed_file in changed_files
++            self.process_file(
++                file, review_info,
++                [t for t in all_threads if t.file == file],
++                existing_ai_locs,
++            )
++            for file in changed_files
+         ])
+         await hook.emit_inline_review_complete(self.cost.aggregate())
+--- a/ai_review/services/review/runner/summary.py
++++ b/ai_review/services/review/runner/summary.py
+@@ -40,17 +40,14 @@
+     async def run(self) -> None:
+         await hook.emit_summary_review_start()
+ 
+-        comments = await self.review_comment_gateway.get_summary_comments()
+-        if comments:
+-            logger.info(f"Detected {len(comments)} existing AI summary comments, skipping summary review")
+-            return
+-
+         review_info = await self.vcs.get_review_info()
+         changed_files = self.policy.apply_for_files(review_info.changed_files)
+         if not changed_files:
+             logger.info("No files to review for summary")
+             return
+ 
++        all_threads = await self.review_comment_gateway.get_summary_threads()
++
+         logger.info(f"Starting summary review: {len(changed_files)} files changed")
+ 
+         rendered_files = self.diff.render_files(
+@@ -60,7 +57,7 @@
+             head_sha=review_info.head_sha,
+         )
+         prompt_context = build_prompt_context_from_review_info(review_info)
+-        prompt = self.prompt.build_summary_request(rendered_files, prompt_context)
++        prompt = self.prompt.build_summary_request(rendered_files, prompt_context, threads=all_threads)
+         prompt_system = self.prompt.build_system_summary_request(prompt_context)
+         prompt_result = await self.review_llm_gateway.ask(prompt, prompt_system)
+ 
+--- a/ai_review/tests/fixtures/services/prompt.py
++++ b/ai_review/tests/fixtures/services/prompt.py
+@@ -34,16 +34,31 @@
+         ))
+         return "AGENT_LOOP_PROMPT"
+ 
+-    def build_inline_request(self, diff: DiffFileSchema, context: PromptContextSchema) -> str:
+-        self.calls.append(("build_inline_request", {"diff": diff, "context": context}))
++    def build_inline_request(
++            self,
++            diff: DiffFileSchema,
++            context: PromptContextSchema,
++            threads: list[ReviewThreadSchema] | None = None,
++    ) -> str:
++        self.calls.append(("build_inline_request", {"diff": diff, "context": context, "threads": threads}))
+         return f"INLINE_PROMPT_FOR_{diff.file}"
+ 
+-    def build_summary_request(self, diffs: list[DiffFileSchema], context: PromptContextSchema) -> str:
+-        self.calls.append(("build_summary_request", {"diffs": diffs, "context": context}))
++    def build_summary_request(
++            self,
++            diffs: list[DiffFileSchema],
++            context: PromptContextSchema,
++            threads: list[ReviewThreadSchema] | None = None,
++    ) -> str:
++        self.calls.append(("build_summary_request", {"diffs": diffs, "context": context, "threads": threads}))
+         return "SUMMARY_PROMPT"
+ 
+-    def build_context_request(self, diffs: list[DiffFileSchema], context: PromptContextSchema) -> str:
+-        self.calls.append(("build_context_request", {"diffs": diffs, "context": context}))
++    def build_context_request(
++            self,
++            diffs: list[DiffFileSchema],
++            context: PromptContextSchema,
++            threads: list[ReviewThreadSchema] | None = None,
++    ) -> str:
++        self.calls.append(("build_context_request", {"diffs": diffs, "context": context, "threads": threads}))
+         return "CONTEXT_PROMPT"
+ 
+     def build_inline_reply_request(
+--- a/ai_review/tests/fixtures/services/review/gateway/review_comment_gateway.py
++++ b/ai_review/tests/fixtures/services/review/gateway/review_comment_gateway.py
+@@ -77,6 +77,10 @@
+         self.calls.append(("get_inline_threads", {}))
+         return self.responses.get("get_inline_threads", [])
+ 
++    async def get_all_inline_threads(self) -> list[ReviewThreadSchema]:
++        self.calls.append(("get_all_inline_threads", {}))
++        return self.responses.get("get_all_inline_threads", self.responses.get("get_inline_threads", []))
++
+     async def get_summary_threads(self) -> list[ReviewThreadSchema]:
+         self.calls.append(("get_summary_threads", {}))
+         return self.responses.get("get_summary_threads", [])
+--- a/ai_review/tests/suites/services/prompt/test_service.py
++++ b/ai_review/tests/suites/services/prompt/test_service.py
+@@ -264,3 +264,99 @@
+     assert "## Agent mode" in result
+     assert "Return FINAL only." in result
+     assert "No previous steps." in result
++
++
++@pytest.mark.usefixtures("fake_prompts")
++def test_build_inline_request_with_threads_adds_discussion_section(
++        fake_prompt_context: PromptContextSchema,
++) -> None:
++    diff = DiffFileSchema(file="foo.py", diff="+ added line")
++    thread = ReviewThreadSchema(
++        id="t1",
++        kind=ThreadKind.INLINE,
++        file="foo.py",
++        line=5,
++        comments=[
++            ReviewCommentSchema(id=1, body="#ai-review-inline found bug"),
++            ReviewCommentSchema(id=2, body="Fixed, thanks"),
++        ],
++    )
++
++    result = PromptService.build_inline_request(diff, fake_prompt_context, threads=[thread])
++
++    assert "## Existing Review Discussion" in result
++    assert "foo.py:5" in result
++    assert "Fixed, thanks" in result
++
++
++@pytest.mark.usefixtures("fake_prompts")
++def test_build_inline_request_without_threads_has_no_discussion_section(
++        fake_prompt_context: PromptContextSchema,
++) -> None:
++    diff = DiffFileSchema(file="foo.py", diff="+ added line")
++    result = PromptService.build_inline_request(diff, fake_prompt_context)
++
++    assert "## Existing Review Discussion" not in result
++
++
++@pytest.mark.usefixtures("fake_prompts")
++def test_build_context_request_with_threads_adds_discussion_section(
++        fake_prompt_context: PromptContextSchema,
++) -> None:
++    diffs = [DiffFileSchema(file="a.py", diff="+ foo")]
++    thread = ReviewThreadSchema(
++        id="t2",
++        kind=ThreadKind.INLINE,
++        file="a.py",
++        line=3,
++        comments=[
++            ReviewCommentSchema(id=1, body="#ai-review-inline naming issue"),
++            ReviewCommentSchema(id=2, body="Renamed"),
++        ],
++    )
++
++    result = PromptService.build_context_request(diffs, fake_prompt_context, threads=[thread])
++
++    assert "## Existing Review Discussion" in result
++    assert "a.py:3" in result
++    assert "Renamed" in result
++
++
++@pytest.mark.usefixtures("fake_prompts")
++def test_build_context_request_without_threads_has_no_discussion_section(
++        fake_prompt_context: PromptContextSchema,
++) -> None:
++    diffs = [DiffFileSchema(file="a.py", diff="+ foo")]
++    result = PromptService.build_context_request(diffs, fake_prompt_context)
++
++    assert "## Existing Review Discussion" not in result
++
++
++@pytest.mark.usefixtures("fake_prompts")
++def test_build_summary_request_with_threads_adds_discussion_section(
++        fake_prompt_context: PromptContextSchema,
++) -> None:
++    diffs = [DiffFileSchema(file="b.py", diff="- bar")]
++    thread = ReviewThreadSchema(
++        id="t3",
++        kind=ThreadKind.SUMMARY,
++        comments=[
++            ReviewCommentSchema(id=1, body="#ai-review-summary looks ok"),
++            ReviewCommentSchema(id=2, body="Actually there are issues"),
++        ],
++    )
++
++    result = PromptService.build_summary_request(diffs, fake_prompt_context, threads=[thread])
++
++    assert "## Existing Review Discussion" in result
++    assert "Actually there are issues" in result
++
++
++@pytest.mark.usefixtures("fake_prompts")
++def test_build_summary_request_without_threads_has_no_discussion_section(
++        fake_prompt_context: PromptContextSchema,
++) -> None:
++    diffs = [DiffFileSchema(file="b.py", diff="- bar")]
++    result = PromptService.build_summary_request(diffs, fake_prompt_context)
++
++    assert "## Existing Review Discussion" not in result
+--- a/ai_review/tests/suites/services/prompt/test_tools.py
++++ b/ai_review/tests/suites/services/prompt/test_tools.py
+@@ -2,11 +2,12 @@
+ from ai_review.services.diff.schema import DiffFileSchema
+ from ai_review.services.prompt.tools import (
+     format_file,
+-    normalize_prompt,
+     format_files,
++    format_review_context,
+     format_thread,
+     format_trace,
+     format_traces,
++    normalize_prompt,
+ )
+ from ai_review.services.vcs.types import ReviewThreadSchema, ReviewCommentSchema, UserSchema, ThreadKind
+ 
+@@ -74,6 +75,122 @@
+     assert result == ""
+ 
+ 
++# ---------- format_review_context ----------
++
++def test_format_review_context_empty_threads():
++    result = format_review_context([])
++    assert result == "No existing discussion."
++
++
++def test_format_review_context_ai_only_thread_marked_no_human_reply():
++    thread = ReviewThreadSchema(
++        id="t1",
++        kind=ThreadKind.INLINE,
++        file="a.py",
++        line=10,
++        comments=[
++            ReviewCommentSchema(id=1, body="Issue found #ai-review-inline", author=UserSchema(name="Bot")),
++        ],
++    )
++    result = format_review_context([thread])
++    assert "a.py:10 [no human reply yet]" in result
++    assert "Bot:" in result
++
++
++def test_format_review_context_human_replied_thread_marked():
++    thread = ReviewThreadSchema(
++        id="t2",
++        kind=ThreadKind.INLINE,
++        file="b.py",
++        line=5,
++        comments=[
++            ReviewCommentSchema(id=1, body="AI comment #ai-review-inline", author=UserSchema(name="Bot")),
++            ReviewCommentSchema(id=2, body="Thanks, fixed!", author=UserSchema(name="Alice")),
++        ],
++    )
++    result = format_review_context([thread])
++    assert "b.py:5 [human replied]" in result
++    assert "Alice: Thanks, fixed!" in result
++
++
++def test_format_review_context_strips_ai_tags_from_bodies():
++    thread = ReviewThreadSchema(
++        id="t3",
++        kind=ThreadKind.INLINE,
++        file="c.py",
++        line=1,
++        comments=[
++            ReviewCommentSchema(
++                id=1,
++                body="There is a bug here #ai-review-inline",
++                author=UserSchema(name="Bot"),
++            ),
++        ],
++    )
++    result = format_review_context([thread])
++    assert "#ai-review-inline" not in result
++    assert "There is a bug here" in result
++
++
++def test_format_review_context_general_thread_no_file():
++    thread = ReviewThreadSchema(
++        id="t4",
++        kind=ThreadKind.SUMMARY,
++        comments=[
++            ReviewCommentSchema(id=1, body="Overall OK #ai-review-summary", author=UserSchema(name="Bot")),
++        ],
++    )
++    result = format_review_context([thread])
++    assert "general [" in result
++
++
++def test_format_review_context_summary_ai_tag_not_human_reply():
++    thread = ReviewThreadSchema(
++        id="t5",
++        kind=ThreadKind.SUMMARY,
++        comments=[
++            ReviewCommentSchema(
++                id=1, body="Summary comment #ai-review-summary", author=UserSchema(name="Bot")
++            ),
++        ],
++    )
++    result = format_review_context([thread])
++    assert "general [no human reply yet]" in result
++
++
++def test_format_review_context_summary_human_replied():
++    thread = ReviewThreadSchema(
++        id="t6",
++        kind=ThreadKind.SUMMARY,
++        comments=[
++            ReviewCommentSchema(
++                id=1, body="Summary comment #ai-review-summary", author=UserSchema(name="Bot")
++            ),
++            ReviewCommentSchema(id=2, body="Looks good to me", author=UserSchema(name="Alice")),
++        ],
++    )
++    result = format_review_context([thread])
++    assert "general [human replied]" in result
++
++
++def test_format_review_context_inline_summary_tag_not_confused():
++    """An inline thread whose last comment has a summary tag must still be 'human replied'
++    because _SUMMARY_AI_TAGS_RE is only applied to SUMMARY threads."""
++    thread = ReviewThreadSchema(
++        id="t7",
++        kind=ThreadKind.INLINE,
++        file="x.py",
++        line=3,
++        comments=[
++            ReviewCommentSchema(
++                id=1, body="Some remark #ai-review-summary", author=UserSchema(name="Human")
++            ),
++        ],
++    )
++    result = format_review_context([thread])
++    assert "x.py:3 [human replied]" in result
++
++
+ # ---------- format_thread ----------
+ 
+ def test_format_thread_with_multiple_comments():
+--- a/ai_review/tests/suites/services/review/gateway/test_review_comment_gateway.py
++++ b/ai_review/tests/suites/services/review/gateway/test_review_comment_gateway.py
+@@ -18,16 +18,16 @@
+         fake_vcs_client: FakeVCSClient,
+         review_comment_gateway: ReviewCommentGateway,
+ ):
+-    """Should include thread when last comment is from human after AI inline tag."""
++    """Should include thread where AI commented and human replied last."""
+     threads = [
+         ReviewThreadSchema(
+             id="1",
+             kind=ThreadKind.INLINE,
+             file="a.py",
+             comments=[
+-                ReviewCommentSchema(id="1", body=f"AI comment {settings.review.inline_tag}"),
+-                ReviewCommentSchema(id="2", body="Human reply, no tag"),
+-            ]
++                ReviewCommentSchema(id="1", body=f"AI found issue {settings.review.inline_tag}"),
++                ReviewCommentSchema(id="2", body="Thanks, will fix"),
++            ],
+         ),
+     ]
+     fake_vcs_client.responses["get_inline_threads"] = threads
+@@ -44,17 +44,17 @@
+         fake_vcs_client: FakeVCSClient,
+         review_comment_gateway: ReviewCommentGateway,
+ ):
+-    """Should include thread on subsequent human reply after AI inline reply tag."""
++    """Should include thread where human replied after AI reply-tag comment."""
+     threads = [
+         ReviewThreadSchema(
+             id="2",
+             kind=ThreadKind.INLINE,
+             file="b.py",
+             comments=[
+-                ReviewCommentSchema(id="1", body=f"AI {settings.review.inline_tag}"),
+-                ReviewCommentSchema(id="2", body=f"AI {settings.review.inline_reply_tag}"),
+-                ReviewCommentSchema(id="3", body="New human reply"),
+-            ]
++                ReviewCommentSchema(id="1", body=f"Original {settings.review.inline_tag}"),
++                ReviewCommentSchema(id="2", body=f"AI reply {settings.review.inline_reply_tag}"),
++                ReviewCommentSchema(id="3", body="Developer follow-up"),
++            ],
+         ),
+     ]
+     fake_vcs_client.responses["get_inline_threads"] = threads
+@@ -70,48 +70,132 @@
+         fake_vcs_client: FakeVCSClient,
+         review_comment_gateway: ReviewCommentGateway,
+ ):
+-    """Should exclude thread when last comment is AI (no new human reply)."""
++    """Should exclude thread where the last comment is an AI tag (AI replied last)."""
++    threads = [
++        ReviewThreadSchema(
++            id="3",
++            kind=ThreadKind.INLINE,
++            file="c.py",
++            comments=[
++                ReviewCommentSchema(id="1", body="Human comment"),
++                ReviewCommentSchema(id="2", body=f"AI responded {settings.review.inline_reply_tag}"),
++            ],
++        ),
++    ]
++    fake_vcs_client.responses["get_inline_threads"] = threads
++
++    result = await review_comment_gateway.get_inline_threads()
++
++    assert result == []
++
++
++@pytest.mark.asyncio
++async def test_get_inline_threads_excludes_threads_without_ai_tags(
++        fake_vcs_client: FakeVCSClient,
++        review_comment_gateway: ReviewCommentGateway,
++):
++    """Should exclude threads that never had any AI tag."""
++    threads = [
++        ReviewThreadSchema(
++            id="4",
++            kind=ThreadKind.INLINE,
++            file="d.py",
++            comments=[
++                ReviewCommentSchema(id="1", body="Human question"),
++                ReviewCommentSchema(id="2", body="Another human reply"),
++            ],
++        ),
++    ]
++    fake_vcs_client.responses["get_inline_threads"] = threads
++
++    result = await review_comment_gateway.get_inline_threads()
++
++    assert result == []
++
++
++@pytest.mark.asyncio
++async def test_get_inline_threads_excludes_when_only_ai_no_human_reply(
++        fake_vcs_client: FakeVCSClient,
++        review_comment_gateway: ReviewCommentGateway,
++):
++    """get_inline_threads should exclude AI-only threads (no human reply yet)."""
++    threads = [
++        ReviewThreadSchema(
++            id="5",
++            kind=ThreadKind.INLINE,
++            file="e.py",
++            comments=[
++                ReviewCommentSchema(id="1", body=f"AI spotted bug {settings.review.inline_tag}"),
++            ],
++        ),
++    ]
++    fake_vcs_client.responses["get_inline_threads"] = threads
++
++    result = await review_comment_gateway.get_inline_threads()
++
++    assert result == []
++
++
++@pytest.mark.asyncio
++async def test_get_all_inline_threads_includes_all_ai_threads(
++        fake_vcs_client: FakeVCSClient,
++        review_comment_gateway: ReviewCommentGateway,
++):
++    """get_all_inline_threads should include both human-replied and AI-only threads."""
+     threads = [
+         ReviewThreadSchema(
+             id="1",
+             kind=ThreadKind.INLINE,
+             file="a.py",
+-            comments=[ReviewCommentSchema(id="1", body=f"AI comment {settings.review.inline_tag}")],
++            comments=[
++                ReviewCommentSchema(id="1", body=f"AI issue {settings.review.inline_tag}"),
++                ReviewCommentSchema(id="2", body="Human reply"),
++            ],
+         ),
+         ReviewThreadSchema(
+             id="2",
+             kind=ThreadKind.INLINE,
+             file="b.py",
+             comments=[
+-                ReviewCommentSchema(id="2", body=f"AI {settings.review.inline_tag}"),
+-                ReviewCommentSchema(id="3", body=f"AI reply {settings.review.inline_reply_tag}"),
++                ReviewCommentSchema(id="3", body=f"AI only {settings.review.inline_tag}"),
++            ],
++        ),
++        ReviewThreadSchema(
++            id="3",
++            kind=ThreadKind.INLINE,
++            file="c.py",
++            comments=[
++                ReviewCommentSchema(id="5", body="No AI tag here"),
+             ],
+         ),
+     ]
+     fake_vcs_client.responses["get_inline_threads"] = threads
+ 
+-    result = await review_comment_gateway.get_inline_threads()
++    result = await review_comment_gateway.get_all_inline_threads()
+ 
+-    assert result == []
++    assert len(result) == 2
++    assert {t.id for t in result} == {"1", "2"}
+ 
+ 
+ @pytest.mark.asyncio
+-async def test_get_inline_threads_excludes_threads_without_ai_tags(
++async def test_get_all_inline_threads_excludes_non_ai_threads(
+         fake_vcs_client: FakeVCSClient,
+         review_comment_gateway: ReviewCommentGateway,
+ ):
+-    """Should exclude threads that never had AI participation."""
++    """get_all_inline_threads should exclude threads with no AI tag at all."""
+     threads = [
+         ReviewThreadSchema(
+-            id="9",
++            id="10",
+             kind=ThreadKind.INLINE,
+-            file="c.py",
+-            comments=[ReviewCommentSchema(id="1", body="Pure human discussion")],
++            file="x.py",
++            comments=[
++                ReviewCommentSchema(id="1", body="Just a human comment"),
++            ],
+         ),
+     ]
+     fake_vcs_client.responses["get_inline_threads"] = threads
+ 
+-    result = await review_comment_gateway.get_inline_threads()
++    result = await review_comment_gateway.get_all_inline_threads()
+ 
+     assert result == []
+ 
+@@ -121,15 +205,15 @@
+         fake_vcs_client: FakeVCSClient,
+         review_comment_gateway: ReviewCommentGateway,
+ ):
+-    """Should include summary thread when human replied after AI summary tag."""
++    """Should include summary thread where human replied after AI comment."""
+     threads = [
+         ReviewThreadSchema(
+             id="10",
+             kind=ThreadKind.SUMMARY,
+             comments=[
+-                ReviewCommentSchema(id="1", body=f"AI {settings.review.summary_tag}"),
+-                ReviewCommentSchema(id="2", body="Human follow-up"),
+-            ]
++                ReviewCommentSchema(id="1", body=f"AI {settings.review.summary_tag} overall ok"),
++                ReviewCommentSchema(id="2", body="Developer disagrees"),
++            ],
+         ),
+     ]
+     fake_vcs_client.responses["get_general_threads"] = threads
+@@ -146,16 +230,21 @@
+         fake_vcs_client: FakeVCSClient,
+         review_comment_gateway: ReviewCommentGateway,
+ ):
+-    """Should exclude summary thread when last comment is AI."""
++    """Should exclude summary thread where AI tag is the last comment."""
+     threads = [
+         ReviewThreadSchema(
+             id="11",
+             kind=ThreadKind.SUMMARY,
+             comments=[
+-                ReviewCommentSchema(id="1", body=f"AI {settings.review.summary_tag}"),
+-                ReviewCommentSchema(id="2", body=f"AI reply {settings.review.summary_reply_tag}"),
++                ReviewCommentSchema(id="1", body="Human question"),
++                ReviewCommentSchema(id="2", body=f"AI {settings.review.summary_reply_tag} answered"),
+             ],
+         ),
++        ReviewThreadSchema(
++            id="12",
++            kind=ThreadKind.SUMMARY,
++            comments=[ReviewCommentSchema(id="3", body="No tags here")],
++        ),
+     ]
+     fake_vcs_client.responses["get_general_threads"] = threads
+ 
+--- a/ai_review/tests/suites/services/review/runner/test_context.py
++++ b/ai_review/tests/suites/services/review/runner/test_context.py
+@@ -1,7 +1,9 @@
+ import pytest
+ 
++from ai_review.config import settings
++from ai_review.services.review.internal.inline.schema import InlineCommentSchema
+ from ai_review.services.review.runner.context import ContextReviewRunner
+-from ai_review.services.vcs.types import ReviewCommentSchema
++from ai_review.services.vcs.types import ReviewCommentSchema, ReviewThreadSchema, ThreadKind, UserSchema
+ from ai_review.tests.fixtures.services.cost import FakeCostService
+ from ai_review.tests.fixtures.services.diff import FakeDiffService
+ from ai_review.tests.fixtures.services.prompt import FakePromptService
+@@ -24,6 +26,7 @@
+         fake_review_direct_llm_gateway: FakeReviewDirectLLMGateway,
+ ):
+     """Should render all changed files, call LLM and post inline comments."""
++    fake_review_comment_gateway.responses["get_inline_threads"] = []
+     fake_review_comment_gateway.responses["get_inline_comments"] = []
+ 
+     await context_review_runner.run()
+@@ -41,22 +44,72 @@
+ 
+ 
+ @pytest.mark.asyncio
+-async def test_run_skips_when_existing_comments(
++async def test_run_calls_llm_even_when_existing_ai_comments(
+         context_review_runner: ContextReviewRunner,
+         fake_vcs_client: FakeVCSClient,
+         fake_review_comment_gateway: FakeReviewCommentGateway,
+         fake_review_direct_llm_gateway: FakeReviewDirectLLMGateway,
+ ):
+-    """Should skip context review if inline comments already exist."""
++    """Should call LLM even when inline AI comments already exist (re-review)."""
++    fake_review_comment_gateway.responses["get_inline_threads"] = []
+     fake_review_comment_gateway.responses["get_inline_comments"] = [
+-        ReviewCommentSchema(id="1", body="#ai-review-inline existing"),
++        ReviewCommentSchema(id="1", body=f"{settings.review.inline_tag} existing"),
+     ]
+ 
+     await context_review_runner.run()
+ 
+     vcs_calls = [call[0] for call in fake_vcs_client.calls]
+-    assert vcs_calls == []
+-    assert not any(call[0] == "ask" for call in fake_review_direct_llm_gateway.calls)
++    assert "get_review_info" in vcs_calls
++    assert any(call[0] == "ask" for call in fake_review_direct_llm_gateway.calls)
++
++
++@pytest.mark.asyncio
++async def test_run_passes_threads_to_prompt(
++        context_review_runner: ContextReviewRunner,
++        fake_prompt_service: FakePromptService,
++        fake_review_comment_gateway: FakeReviewCommentGateway,
++        fake_review_direct_llm_gateway: FakeReviewDirectLLMGateway,
++):
++    """Should pass inline threads to build_context_request."""
++    fake_review_comment_gateway.responses["get_inline_comments"] = []
++
++    user = UserSchema(id="u1", username="dev", name="Dev")
++    thread = ReviewThreadSchema(
++        id="t1",
++        kind=ThreadKind.INLINE,
++        file="file.py",
++        line=10,
++        comments=[
++            ReviewCommentSchema(id="c1", body=f"{settings.review.inline_tag} bug", author=user),
++            ReviewCommentSchema(id="c2", body="Will fix", author=user),
++        ],
++    )
++    fake_review_comment_gateway.responses["get_inline_threads"] = [thread]
++
++    await context_review_runner.run()
++
++    build_calls = [call for call in fake_prompt_service.calls if call[0] == "build_context_request"]
++    assert build_calls
++    assert build_calls[0][1]["threads"] == [thread]
++
++
++@pytest.mark.asyncio
++async def test_run_deduplicates_comments_by_file_line(
++        context_review_runner: ContextReviewRunner,
++        fake_inline_comment_service: FakeInlineCommentService,
++        fake_review_comment_gateway: FakeReviewCommentGateway,
++        fake_review_direct_llm_gateway: FakeReviewDirectLLMGateway,
++):
++    """Should not post comments at locations already covered by existing AI comments."""
++    fake_review_comment_gateway.responses["get_inline_threads"] = []
++    fake_inline_comment_service.comments = [InlineCommentSchema(file="file.py", line=7, message="issue")]
++    fake_review_comment_gateway.responses["get_inline_comments"] = [
++        ReviewCommentSchema(id="1", body=f"{settings.review.inline_tag} old", file="file.py", line=7)
++    ]
++
++    await context_review_runner.run()
++
++    assert not any(call[0] == "process_inline_comments" for call in fake_review_comment_gateway.calls)
+ 
+ 
+ @pytest.mark.asyncio
+@@ -68,7 +121,6 @@
+ ):
+     """Should skip when no changed files after policy filtering."""
+     fake_policy_service.responses["apply_for_files"] = []
+-    fake_review_comment_gateway.responses["get_inline_comments"] = []
+ 
+     await context_review_runner.run()
+ 
+@@ -84,9 +136,9 @@
+         fake_review_comment_gateway: FakeReviewCommentGateway,
+         fake_inline_comment_service: FakeInlineCommentService,
+         fake_review_direct_llm_gateway: FakeReviewDirectLLMGateway,
+-
+ ):
+     """Should not post comments if LLM output is empty."""
++    fake_review_comment_gateway.responses["get_inline_threads"] = []
+     fake_review_comment_gateway.responses["get_inline_comments"] = []
+     fake_inline_comment_service.comments = []
+ 
+--- a/ai_review/tests/suites/services/review/runner/test_inline.py
++++ b/ai_review/tests/suites/services/review/runner/test_inline.py
+@@ -2,7 +2,13 @@
+ 
+ from ai_review.config import settings
+ from ai_review.services.review.runner.inline import InlineReviewRunner
+-from ai_review.services.vcs.types import ReviewInfoSchema, ReviewCommentSchema
++from ai_review.services.vcs.types import (
++    ReviewInfoSchema,
++    ReviewCommentSchema,
++    ReviewThreadSchema,
++    ThreadKind,
++    UserSchema,
++)
+ from ai_review.tests.fixtures.services.cost import FakeCostService
+ from ai_review.tests.fixtures.services.diff import FakeDiffService
+ from ai_review.tests.fixtures.services.git import FakeGitService
+@@ -28,6 +34,7 @@
+ ):
+     """Should process all changed files, call LLM and post inline comments."""
+     fake_git_service.responses["get_diff_for_file"] = "FAKE_DIFF"
++    fake_review_comment_gateway.responses["get_inline_threads"] = []
+     fake_review_comment_gateway.responses["get_inline_comments"] = []
+ 
+     await inline_review_runner.run()
+@@ -48,22 +55,83 @@
+ 
+ 
+ @pytest.mark.asyncio
+-async def test_run_skips_when_existing_comments(
++async def test_run_calls_llm_even_when_existing_ai_comments(
+         inline_review_runner: InlineReviewRunner,
+         fake_vcs_client: FakeVCSClient,
++        fake_git_service: FakeGitService,
++        fake_prompt_service: FakePromptService,
+         fake_review_comment_gateway: FakeReviewCommentGateway,
+         fake_review_direct_llm_gateway: FakeReviewDirectLLMGateway,
+ ):
+-    """Should skip review if there are already existing inline comments."""
++    """Should call LLM even when inline AI comments already exist (re-review)."""
++    fake_git_service.responses["get_diff_for_file"] = "FAKE_DIFF"
+     fake_review_comment_gateway.responses["get_inline_comments"] = [
+-        ReviewCommentSchema(id="1", body=f"{settings.review.inline_tag} existing")
++        ReviewCommentSchema(id="1", body=f"{settings.review.inline_tag} existing", file="file.py", line=10)
+     ]
++    fake_review_comment_gateway.responses["get_inline_threads"] = []
+ 
+     await inline_review_runner.run()
+ 
+     vcs_calls = [call[0] for call in fake_vcs_client.calls]
+-    assert vcs_calls == []
+-    assert not any(call[0] == "ask" for call in fake_review_direct_llm_gateway.calls)
++    assert "get_review_info" in vcs_calls
++    assert any(call[0] == "ask" for call in fake_review_direct_llm_gateway.calls)
++
++
++@pytest.mark.asyncio
++async def test_run_passes_file_threads_to_prompt(
++        inline_review_runner: InlineReviewRunner,
++        fake_git_service: FakeGitService,
++        fake_prompt_service: FakePromptService,
++        fake_review_comment_gateway: FakeReviewCommentGateway,
++        fake_review_direct_llm_gateway: FakeReviewDirectLLMGateway,
++):
++    """Should pass per-file threads to build_inline_request for context."""
++    fake_git_service.responses["get_diff_for_file"] = "FAKE_DIFF"
++    fake_review_comment_gateway.responses["get_inline_comments"] = []
++
++    user = UserSchema(id="u1", username="dev", name="Dev")
++    thread = ReviewThreadSchema(
++        id="t1",
++        kind=ThreadKind.INLINE,
++        file="file.py",
++        line=5,
++        comments=[
++            ReviewCommentSchema(id="c1", body=f"{settings.review.inline_tag} issue", file="file.py", line=5, author=user),
++            ReviewCommentSchema(id="c2", body="Fixed it", file="file.py", line=5, author=user),
++        ],
++    )
++    fake_review_comment_gateway.responses["get_inline_threads"] = [thread]
++
++    await inline_review_runner.run()
++
++    build_calls = [call for call in fake_prompt_service.calls if call[0] == "build_inline_request"]
++    assert build_calls
++    assert build_calls[0][1]["threads"] == [thread]
++
++
++@pytest.mark.asyncio
++async def test_run_deduplicates_comments_by_file_line(
++        inline_review_runner: InlineReviewRunner,
++        fake_git_service: FakeGitService,
++        fake_inline_comment_service: FakeInlineCommentService,
++        fake_review_comment_gateway: FakeReviewCommentGateway,
++        fake_review_direct_llm_gateway: FakeReviewDirectLLMGateway,
++):
++    """Should not post comments at locations already covered by existing AI comments."""
++    from ai_review.services.review.internal.inline.schema import InlineCommentSchema
++
++    fake_git_service.responses["get_diff_for_file"] = "FAKE_DIFF"
++    fake_review_comment_gateway.responses["get_inline_threads"] = []
++    # LLM will propose a comment at file.py:42
++    fake_inline_comment_service.comments = [InlineCommentSchema(file="file.py", line=42, message="issue")]
++    # Same location already exists as AI comment
++    fake_review_comment_gateway.responses["get_inline_comments"] = [
++        ReviewCommentSchema(id="1", body=f"{settings.review.inline_tag} old", file="file.py", line=42)
++    ]
++
++    await inline_review_runner.run()
++
++    assert not any(call[0] == "process_inline_comments" for call in fake_review_comment_gateway.calls)
+ 
+ 
+ @pytest.mark.asyncio
+@@ -77,7 +145,7 @@
+     fake_git_service.responses["get_diff_for_file"] = ""
+ 
+     review_info = ReviewInfoSchema(base_sha="A", head_sha="B")
+-    await inline_review_runner.process_file("file.py", review_info)
++    await inline_review_runner.process_file("file.py", review_info, [], set())
+ 
+     assert not any(call[0] == "ask" for call in fake_review_direct_llm_gateway.calls)
+     assert not any(call[0] == "process_inline_comments" for call in fake_review_comment_gateway.calls)
+@@ -97,7 +165,7 @@
+     fake_inline_comment_service.comments = []
+ 
+     review_info = ReviewInfoSchema(base_sha="A", head_sha="B")
+-    await inline_review_runner.process_file("file.py", review_info)
++    await inline_review_runner.process_file("file.py", review_info, [], set())
+ 
+     assert any(call[0] == "ask" for call in fake_review_direct_llm_gateway.calls)
+     assert any(call[0] == "apply_for_inline_comments" for call in fake_policy_service.calls)
+--- a/ai_review/tests/suites/services/review/runner/test_summary.py
++++ b/ai_review/tests/suites/services/review/runner/test_summary.py
+@@ -1,8 +1,9 @@
+ import pytest
+ 
++from ai_review.config import settings
+ from ai_review.services.review.internal.summary.schema import SummaryCommentSchema
+ from ai_review.services.review.runner.summary import SummaryReviewRunner
+-from ai_review.services.vcs.types import ReviewCommentSchema
++from ai_review.services.vcs.types import ReviewCommentSchema, ReviewThreadSchema, ThreadKind, UserSchema
+ from ai_review.tests.fixtures.services.cost import FakeCostService
+ from ai_review.tests.fixtures.services.diff import FakeDiffService
+ from ai_review.tests.fixtures.services.policy import FakePolicyService
+@@ -25,7 +26,7 @@
+         fake_review_direct_llm_gateway: FakeReviewDirectLLMGateway,
+ ):
+     """Should render all changed files, call LLM and post summary comment."""
+-    fake_review_comment_gateway.responses["get_summary_comments"] = []
++    fake_review_comment_gateway.responses["get_summary_threads"] = []
+ 
+     await summary_review_runner.run()
+ 
+@@ -42,22 +43,46 @@
+ 
+ 
+ @pytest.mark.asyncio
+-async def test_run_skips_when_existing_summary_comments(
++async def test_run_calls_llm_even_when_existing_summary_comments(
+         summary_review_runner: SummaryReviewRunner,
+         fake_vcs_client: FakeVCSClient,
+         fake_review_comment_gateway: FakeReviewCommentGateway,
+         fake_review_direct_llm_gateway: FakeReviewDirectLLMGateway,
+ ):
+-    """Should skip summary review if summary comment already exists."""
+-    fake_review_comment_gateway.responses["get_summary_comments"] = [
+-        ReviewCommentSchema(id="1", body="#ai-review-summary existing"),
+-    ]
++    """Should call LLM even when summary AI comments already exist (re-review)."""
++    fake_review_comment_gateway.responses["get_summary_threads"] = []
+ 
+     await summary_review_runner.run()
+ 
+     vcs_calls = [call[0] for call in fake_vcs_client.calls]
+-    assert vcs_calls == []
+-    assert not any(call[0] == "ask" for call in fake_review_direct_llm_gateway.calls)
++    assert "get_review_info" in vcs_calls
++    assert any(call[0] == "ask" for call in fake_review_direct_llm_gateway.calls)
++
++
++@pytest.mark.asyncio
++async def test_run_passes_threads_to_prompt(
++        summary_review_runner: SummaryReviewRunner,
++        fake_prompt_service: FakePromptService,
++        fake_review_comment_gateway: FakeReviewCommentGateway,
++        fake_review_direct_llm_gateway: FakeReviewDirectLLMGateway,
++):
++    """Should pass summary threads to build_summary_request."""
++    user = UserSchema(id="u1", username="dev", name="Dev")
++    thread = ReviewThreadSchema(
++        id="t1",
++        kind=ThreadKind.SUMMARY,
++        comments=[
++            ReviewCommentSchema(id="c1", body=f"{settings.review.summary_tag} overall ok", author=user),
++            ReviewCommentSchema(id="c2", body="Disagree", author=user),
++        ],
++    )
++    fake_review_comment_gateway.responses["get_summary_threads"] = [thread]
++
++    await summary_review_runner.run()
++
++    build_calls = [call for call in fake_prompt_service.calls if call[0] == "build_summary_request"]
++    assert build_calls
++    assert build_calls[0][1]["threads"] == [thread]
+ 
+ 
+ @pytest.mark.asyncio
+@@ -69,7 +94,6 @@
+ ):
+     """Should skip when no changed files remain after policy filtering."""
+     fake_policy_service.responses["apply_for_files"] = []
+-    fake_review_comment_gateway.responses["get_summary_comments"] = []
+ 
+     await summary_review_runner.run()
+ 
+@@ -86,7 +110,7 @@
+         fake_review_direct_llm_gateway: FakeReviewDirectLLMGateway,
+ ):
+     """Should skip posting comment if LLM output is empty."""
+-    fake_review_comment_gateway.responses["get_summary_comments"] = []
++    fake_review_comment_gateway.responses["get_summary_threads"] = []
+     fake_summary_comment_service.responses["parse_model_output"] = SummaryCommentSchema(text="")
+ 
+     await summary_review_runner.run()
