@@ -63,7 +63,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          REVIEW_COMMAND: ${{ inputs.review-command }}
           AI_REVIEW_CONFIG_FILE_YAML: .github/review-config.yaml
           GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
           CMD_RUN: ${{ inputs.run }}
@@ -81,4 +80,4 @@ jobs:
           LLM_API_MODEL: ${{ inputs.llm-api-model || 'co-glm' }}
           GITHUB_API_URL: ${{ github.api_url }}
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
-        run: "bin/ai-review.sh"
+        run: ".github/scripts/ai-review.sh"
