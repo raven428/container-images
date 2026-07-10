@@ -1,0 +1,47 @@
+--- a/src/browser.js
++++ b/src/browser.js
+@@ -36,6 +36,31 @@
+ 
+ const log = (...a) => console.error("[browser]", ...a);
+ 
++// Build Playwright's `proxy` option from an env variable.
++// Accepts URL form: http(s)://user:pass@host:port or socks5://host:port .
++// Reads OZON_PROXY first, then falls back to standard HTTPS_PROXY / HTTP_PROXY.
++// NOTE: Chromium does not support user/password for SOCKS5 — auth works only for HTTP(S).
++function proxyFromEnv() {
++  const raw = process.env.OZON_PROXY
++    || process.env.HTTPS_PROXY
++    || process.env.https_proxy
++    || process.env.HTTP_PROXY
++    || process.env.http_proxy;
++  if (!raw) return undefined;
++  let u;
++  try {
++    u = new URL(raw);
++  } catch (e) {
++    log("invalid proxy URL, ignoring:", raw, String(e?.message || e));
++    return undefined;
++  }
++  const opts = { server: `${u.protocol}//${u.host}` };
++  if (u.username) opts.username = decodeURIComponent(u.username);
++  if (u.password) opts.password = decodeURIComponent(u.password);
++  log("using proxy:", opts.server, opts.username ? "(with auth)" : "(no auth)");
++  return opts;
++}
++
+ let browser = null;
+ let context = null;
+ let mainPage = null; // the page that passed the challenge; all fetches run from it (stays on ozon.ru)
+@@ -54,7 +79,11 @@
+ 
+ async function launch() {
+   log("launching Chromium…");
+-  browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
++  browser = await chromium.launch({
++    headless: true,
++    args: LAUNCH_ARGS,
++    proxy: proxyFromEnv(),
++  });
+   browser.on("disconnected", () => {
+     log("disconnected — will relaunch on next request");
+     browser = null;
