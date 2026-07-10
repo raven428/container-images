@@ -2,8 +2,9 @@
 
 ## Opencode Podman Quadlet
 
-```bash
-cat  ~raven/.config/containers/systemd/opencode-main.container
+`~/.config/containers/systemd/opencode-main.container`:
+
+```ini
 [Unit]
 Description=main Opencode
 Wants=network-online.target
@@ -14,7 +15,7 @@ User=coder
 Group=coder
 GroupAdd=sudo,tcpdump,root
 WorkingDir=/workspace
-Image=ghcr.io/raven428/container-images/vibeco-ubuntu-24_04:999
+Image=ghcr.io/raven428/container-images/vibeco-ubuntu-24_04:latest
 Volume=%h/bin:/home/coder/bin
 Volume=%h/git:/workspace/github
 Volume=%h/vscode:/workspace/vscode
