@@ -44,7 +44,7 @@ For each new patch N:
 
   Collect output for all changed files into `sources/<name>/patches/000N-description.patch`.
 
-- Verify the patch applies cleanly using yet another worktree:
+- Verify the patch applies using yet another worktree:
 
   ```bash
   git -C /tmp/upstream worktree add /tmp/verify HEAD
@@ -64,7 +64,7 @@ For each new patch N:
 
 ### Rules
 
-- Each patch must apply cleanly on top of all previous patches in order.
+- Each patch must apply on top of all previous patches in order.
 - A patch must contain **only** its own changes — never re-include hunks already present in earlier patches.
 - Do not use `git stash`, `git diff`, `git apply` or any other git commands for patch generation.
 - Paths inside the patch must be `a/<relative-path>` / `b/<relative-path>` so that `patch -p1` strips exactly one path component and lands in the right place.
