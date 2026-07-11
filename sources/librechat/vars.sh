@@ -13,7 +13,7 @@ checkout_upstream 'https://github.com/danny-avila/LibreChat.git' 'v0.8.5' "${_up
 # shellcheck disable=2153
 cp -rv "${IMAGE_DIR}/files" "${_upstream}/"
 cp -v "${IMAGE_DIR}/setup-podman.sh" "${_upstream}/"
-cp -v "sources/${TAG}/_shared/podman.sh" "${_upstream}/"
+cp -v "${IMAGE_DIR}/_shared/podman.sh" "${_upstream}/"
 [[ -z "${PUSHING:-}" ]] && for _patch in "${IMAGE_DIR}/patches/"*.patch; do
   [[ -f "${_patch}" ]] || continue
   echo "applying ${_patch}"

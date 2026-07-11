@@ -3,7 +3,6 @@
 set -ueo pipefail
 # Installs and configures rootless podman for the "node" user (uid 1000),
 # mirroring sources/vibeco-ubuntu-24_04 but without the sysadmin toolbelt.
-# Expects /tmp/podman.sh (the alvistack apt installer) staged alongside.
 apt-get update
 export DEBIAN_FRONTEND=noninteractive
 apt-get install -y --no-install-recommends fuse-overlayfs slirp4netns uidmap podman \
@@ -70,7 +69,7 @@ EOF
 cat <<'EOF' >/home/node/.config/containers/storage.conf
 [storage]
 driver = "overlay"
-graphRoot = "/srv/data/podman/node"
+graphroot = "/srv/data/podman/node"
 EOF
 chown -R node:node /home/node /srv/data/podman/node
 # cleanup

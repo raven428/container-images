@@ -2,7 +2,7 @@
 
 Rebased onto `node:24-trixie-slim` (Debian) to run a rootless podman runtime inside the container, enabling stdio MCP servers that spawn their own containers (e.g. `eduard256/ozon-mcp-server`, which needs a headless Chromium).
 
-The `ozon` MCP server in `files/librechat.local.yaml` runs `podman run -i --rm --init --shm-size=1g docker.io/eduard256/ozon-mcp-server:latest`. For that to work the outer LibreChat container must start with enough privileges and a UID mapping that lines up with `/etc/subuid` configured by `setup-podman.sh`.
+The `ozon` MCP server in `files/librechat.local.yaml` runs `podman run -i --rm --init --shm-size=1g ghcr.io/raven428/container-images/mcp-ozon:latest`. For that to work the outer LibreChat container must start with enough privileges and a UID mapping that lines up with `/etc/subuid` configured by `setup-podman.sh`.
 
 ## LibreChat Podman Quadlet
 
