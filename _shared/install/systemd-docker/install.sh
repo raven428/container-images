@@ -5,8 +5,9 @@ export DEBIAN_FRONTEND=noninteractive
 S2D='/files/shared/install/systemd-docker'
 "${S2D}/apt-sources.sh"
 apt-get update
-apt-get install -y --no-install-recommends systemd bash less ca-certificates iproute2 \
-  curl openssh-server
+apt-get install -y --no-install-recommends apt-utils aptitude bash ca-certificates curl \
+  iproute2 less openssh-server python3 python3-apt python3-lz4 python3-psutil \
+  python3-zstd sudo systemd xz-utils
 systemctl enable ssh
 apt-get clean
 rm -rf /usr/share/doc /usr/share/man /var/lib/apt/lists/*
