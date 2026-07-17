@@ -47,6 +47,13 @@ vulnerabilities:
       - "sources/ansible-09/files/requirements.txt"
       - "sources/ansible-10/files/requirements.txt"
       - "sources/ansible-11/files/requirements.txt"
+  # (high) fixed in ansible 2.16.19rc1
+  - id: CVE-2026-11332
+    paths:
+      - "sources/ansible-06/files/requirements.txt"
+      - "sources/ansible-07/files/requirements.txt"
+      - "sources/ansible-08/files/requirements.txt"
+      - "sources/ansible-10/files/requirements.txt"
 misconfigurations:
   - id: AVD-DS-0001
   - id: AVD-DS-0002
