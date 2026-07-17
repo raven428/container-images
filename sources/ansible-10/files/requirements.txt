@@ -4,7 +4,7 @@
 # netaddr yamllint ansible-lint podman \
 # molecule-podman tomli lz4 zstd lzlib pytest
 ansible-compat==25.6.0
-ansible-core==2.17.12
+ansible-core==2.17.14
 ansible-lint==25.6.1
 ansible==10.7.0
 attrs==25.3.0
