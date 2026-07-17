@@ -101,6 +101,10 @@ else
         TAG="${_image#sources/}"
         IMAGE_DIR="${_image}"
         SHARED_ASSETS=()
+        # PUSHING=1 disables patch application and other push-guarded
+        # side effects while we only need to read SHARED_ASSETS
+        # shellcheck disable=2034
+        PUSHING=1
         # shellcheck disable=1090
         source "${_dir}vars.sh" 2>/dev/null || true
         /usr/bin/env printf '%s\n' "${SHARED_ASSETS[@]:-}"
