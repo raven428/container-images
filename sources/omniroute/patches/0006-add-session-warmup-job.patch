@@ -147,7 +147,7 @@
      console.log("[COMPLIANCE] Audit log table initialized");
 --- /dev/null
 +++ b/src/lib/sessionWarmupJob.ts
-@@ -0,0 +1,651 @@
+@@ -0,0 +1,660 @@
 +/**
 + * Session Warmup Job
 + *
@@ -413,7 +413,16 @@
 +function extractSessionResetAt(quotas: Record<string, unknown>): string | null {
 +  for (const key of SESSION_WINDOW_KEYS) {
 +    const windowData = asRecord(quotas[key]);
-+    if (typeof windowData.resetAt === "string") return windowData.resetAt;
++    if (typeof windowData.resetAt !== "string") continue;
++    // A resetAt pointing at/into the past means the window is NOT open. When the
++    // proxy fails fail-closed, fetchAndPersistProviderLimits can hand back stale
++    // cached quotas whose resetAt already expired; treating that as "session
++    // active" would wedge the job forever (never firing a warmup). Only surface a
++    // resetAt that is actually in the future so an expired window reads as null.
++    const resetMs = Date.parse(windowData.resetAt);
++    if (Number.isFinite(resetMs) && resetMs > Date.now()) {
++      return windowData.resetAt;
++    }
 +  }
 +  return null;
 +}
@@ -435,13 +444,12 @@
 +}
 +
 +async function getSessionResetAt(connectionId: string): Promise<string | null> {
++  // extractSessionResetAt re-checks `resetMs > Date.now()` on every read (not
++  // just at cache-write time), so a non-null hit is already a future timestamp.
++  // The caller still branches on `resetAtMs > now` only to separate an open
++  // window from the null/refresh paths — not because this value could be stale.
 +  const cached = readResetAtFromCache(connectionId);
-+  if (cached !== null) {
-+    const resetMs = Date.parse(cached);
-+    if (Number.isFinite(resetMs) && resetMs > Date.now()) {
-+      return cached;
-+    }
-+  }
++  if (cached !== null) return cached;
 +
 +  return refreshCache(connectionId);
 +}
@@ -724,24 +732,25 @@
 +    return;
 +  }
 +
-+  if (sessionResetAt) {
-+    const resetAtMs = Date.parse(sessionResetAt);
-+    if (Number.isFinite(resetAtMs) && resetAtMs > now) {
-+      patchState(connectionId, {
-+        knownSessionResetAt: resetAtMs,
-+        sessionEndSnoozeUntil: 0,
-+      });
-+    }
-+    const left = Number.isFinite(resetAtMs) && resetAtMs > now
-+      ? fmtDuration(resetAtMs - now)
-+      : "?";
-+    const endsAt = Number.isFinite(resetAtMs)
-+      ? new Date(resetAtMs).toISOString()
-+      : sessionResetAt;
++  const resetAtMs = sessionResetAt ? Date.parse(sessionResetAt) : NaN;
++  // Only a resetAt strictly in the future means the 5h window is open. A past or
++  // unparseable value (e.g. stale quotas returned after a fail-closed proxy abort)
++  // must NOT count as "session active" — otherwise the job would return here every
++  // sweep and never send a warmup, wedging the connection indefinitely.
++  if (Number.isFinite(resetAtMs) && resetAtMs > now) {
++    patchState(connectionId, {
++      knownSessionResetAt: resetAtMs,
++      sessionEndSnoozeUntil: 0,
++    });
 +    console.log(
-+      `${LOG_PREFIX} Skipping ${tag} (session active, ends ${endsAt}, ${left} left)`
++      `${LOG_PREFIX} Skipping ${tag} (session active, ends ${new Date(resetAtMs).toISOString()}, ${fmtDuration(resetAtMs - now)} left)`
 +    );
 +    return;
++  }
++  if (sessionResetAt) {
++    console.log(
++      `${LOG_PREFIX} Stale/expired resetAt for ${tag} (${sessionResetAt}), treating window as not started`
++    );
 +  }
 +
 +  console.log(
