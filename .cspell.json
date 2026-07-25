@@ -179,6 +179,7 @@
     "megalinter",
     "Miass",
     "mkosi",
+    "mktemp",
     "mongocli",
     "mongosh",
     "moreutils",

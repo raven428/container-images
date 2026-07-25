@@ -14,32 +14,39 @@ For each new patch N:
 
 - Clone (or reuse) the upstream repo at the pinned tag into `/tmp/upstream`.
 
-- Build the **original** tree (state before patch N) using a worktree so no
-  full copy is needed:
+- Generate a fresh, collision-free directory for each worktree via `mktemp -d` instead of hardcoding paths like `/tmp/orig`. Prefix the template with `<name>` so the directories are identifiable and don't look like stray tmp junk:
 
   ```bash
-  git -C /tmp/upstream worktree add /tmp/orig HEAD
+  ORIG=$(mktemp -d -t "<name>-orig-XXXXXX")
+  MOD=$(mktemp -d -t "<name>-mod-XXXXXX")
+  VERIFY=$(mktemp -d -t "<name>-verify-XXXXXX")
+  ```
+
+- Build the **original** tree (state before patch N) using a worktree so no full copy is needed:
+
+  ```bash
+  git -C /tmp/upstream worktree add "$ORIG" HEAD
   for patch in sources/<name>/patches/0001-*.patch … 000$((N-1))-*.patch; do
-    patch -d /tmp/orig -p1 < "$patch"
+    patch -d "$ORIG" -p1 < "$patch"
   done
   ```
 
-- Build the **modified** tree (state after patch N) as another worktree, then
-  edit the files directly — no git involved:
+- Build the **modified** tree (state after patch N) as another worktree, then edit the files directly — no git involved:
 
   ```bash
-  git -C /tmp/upstream worktree add /tmp/mod HEAD
+  git -C /tmp/upstream worktree add "$MOD" HEAD
   for patch in sources/<name>/patches/0001-*.patch … 000$((N-1))-*.patch; do
-    patch -d /tmp/mod -p1 < "$patch"
+    patch -d "$MOD" -p1 < "$patch"
   done
-  # edit files in /tmp/mod
+  # edit files in $MOD
   ```
 
 - Generate the patch for each changed file:
 
   ```bash
   diff -u --label "a/path/to/file" --label "b/path/to/file" \
-    /tmp/orig/path/to/file /tmp/mod/path/to/file
+    "$ORIG/path/to/file" \
+    "$MOD/path/to/file"
   ```
 
   Collect output for all changed files into `sources/<name>/patches/000N-description.patch`.
@@ -47,19 +54,19 @@ For each new patch N:
 - Verify the patch applies using yet another worktree:
 
   ```bash
-  git -C /tmp/upstream worktree add /tmp/verify HEAD
+  git -C /tmp/upstream worktree add "$VERIFY" HEAD
   for patch in sources/<name>/patches/0001-*.patch … 000$((N-1))-*.patch; do
-    patch -d /tmp/verify -p1 < "$patch"
+    patch -d "$VERIFY" -p1 < "$patch"
   done
-  patch -d /tmp/verify -p1 < sources/<name>/patches/000N-description.patch
+  patch -d "$VERIFY" -p1 < sources/<name>/patches/000N-description.patch
   ```
 
 - Clean up worktrees when done:
 
   ```bash
-  git -C /tmp/upstream worktree remove --force /tmp/orig
-  git -C /tmp/upstream worktree remove --force /tmp/mod
-  git -C /tmp/upstream worktree remove --force /tmp/verify
+  git -C /tmp/upstream worktree remove --force "$ORIG"
+  git -C /tmp/upstream worktree remove --force "$MOD"
+  git -C /tmp/upstream worktree remove --force "$VERIFY"
   ```
 
 ### Rules
