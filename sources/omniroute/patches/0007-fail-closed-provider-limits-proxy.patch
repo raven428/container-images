@@ -1,0 +1,65 @@
+--- a/src/lib/usage/providerLimits.ts
++++ b/src/lib/usage/providerLimits.ts
+@@ -266,6 +266,20 @@
+   return getProviderLimitsSyncIntervalMinutes() * 60 * 1000;
+ }
+ 
++/**
++ * When a per-connection proxy is configured but the proxy fails, the usage
++ * fetch used to silently retry WITHOUT the proxy — leaking the host's real IP
++ * to the upstream provider. That defeats the whole point of a fail-closed proxy
++ * setup and can also mask a dead proxy (the warmup job would then see a "live"
++ * resetAt fetched directly and never fire).
++ *
++ * Fail-closed is now the default: the direct-connection retry only happens when
++ * PROVIDER_LIMITS_PROXY_FALLBACK is explicitly set to "true".
++ */
++function isProxyFallbackEnabled(): boolean {
++  return process.env.PROVIDER_LIMITS_PROXY_FALLBACK === "true";
++}
++
+ export async function getLastProviderLimitsAutoSyncTime(): Promise<string | null> {
+   try {
+     const settings = await getSettings();
+@@ -353,6 +367,14 @@
+       error?.cause?.code === "ECONNREFUSED";
+ 
+     if (proxyConfig && isThrownNetworkError) {
++      if (!isProxyFallbackEnabled()) {
++        // Fail-closed: never bypass the proxy on a network error.
++        console.warn(
++          `[ProviderLimits] Proxy fetch threw for ${connectionId}, fail-closed (no direct fallback):`,
++          error?.message
++        );
++        throw error;
++      }
+       console.warn(
+         `[ProviderLimits] Proxy fetch threw for ${connectionId}, retrying without proxy:`,
+         error?.message
+@@ -364,11 +386,21 @@
+   }
+ 
+   if (proxyConfig && isNetworkFailureMessage(result.usage?.message)) {
+-    console.warn(
+-      `[ProviderLimits] Proxy usage returned network error for ${connectionId}, retrying without proxy:`,
+-      result.usage.message
+-    );
+-    result = await fetchUsageWithContext(null);
++    if (!isProxyFallbackEnabled()) {
++      // Fail-closed: never bypass the proxy. Log symmetrically with the thrown
++      // path above so a dead proxy is always visible, even when the failure
++      // arrives as a message in the response body instead of an exception.
++      console.warn(
++        `[ProviderLimits] Proxy usage returned network error for ${connectionId}, fail-closed (no direct fallback):`,
++        result.usage.message
++      );
++    } else {
++      console.warn(
++        `[ProviderLimits] Proxy usage returned network error for ${connectionId}, retrying without proxy:`,
++        result.usage.message
++      );
++      result = await fetchUsageWithContext(null);
++    }
+   }
+ 
+   if (isRecord(result.usage.quotas)) {
