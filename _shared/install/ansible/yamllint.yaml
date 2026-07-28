@@ -28,4 +28,4 @@ rules:
   octal-values:
     level: error
     forbid-implicit-octal: true
-    forbid-explicit-octal: true
+    forbid-explicit-octal: false
