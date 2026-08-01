@@ -1,0 +1,11 @@
+--- a/install/coder.sh
++++ b/install/coder.sh
+@@ -34,6 +34,8 @@
+ curl -sL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+ curl -sL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl\
+ _1.9.1_linux_amd64.deb" -o /files/grpcurl.deb && dpkg -i /files/grpcurl.deb
++curl -Lo opencode --progress-bar "https://github.com/raven428/opencode-ctrl/releases/download/v1.2.16p8/opencode-v1_2_16-linux-x64"
++chmod -v 755 /usr/local/bin/opencode
+
+ # image configuration
+ rm -Rf /root

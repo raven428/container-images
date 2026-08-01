@@ -13,7 +13,7 @@ apt-get install -y --no-install-recommends \
   secure-delete moreutils less acl lz4 lzop lzma zstd unzip mtr patch ripgrep file \
   redis-tools mysqltuner mariadb-client postgresql-client nftables iptables \
   binutils bsdextrautils openssh-client fuse-overlayfs libcap2-bin squashfs-tools \
-  squashfuse debootstrap xfsprogs qemu-system-x86 qemu-utils expect
+  squashfuse debootstrap xfsprogs qemu-system-x86 qemu-utils expect crun runc
 apt-get upgrade -y
 cat >/etc/locale.gen <<'EOF'
 en_US.UTF-8 UTF-8
@@ -25,18 +25,14 @@ sed -i "/^auth[[:space:]]\+sufficient[[:space:]]\+pam_rootok\.so$/a ${pam_line}"
   /etc/pam.d/su
 
 # direct download
-CRUN_VER='1.25.1'
 mkdir -vp /usr/local/bin
 cd /usr/local/bin
-curl -sLo kubectl "https://dl.k8s.io/release/$(curl -L -s \
+curl -sLo kubectl "https://dl.k8s.io/release/$(curl -sL \
   https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-curl -sLo yq \
-  https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-curl -sLo crun "https://github.com/containers/crun/releases/download/${CRUN_VER}/\
-crun-${CRUN_VER}-linux-amd64"
-chmod -v 755 kubectl yq crun
+curl -Lo yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+chmod -v 755 kubectl yq
 curl -sL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-curl -sL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl\
+curl -L "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl\
 _1.9.1_linux_amd64.deb" -o /files/grpcurl.deb && dpkg -i /files/grpcurl.deb
 
 # image configuration

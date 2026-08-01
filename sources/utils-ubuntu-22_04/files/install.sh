@@ -45,15 +45,12 @@ apt-get clean
 
 # direct download
 mkdir -vp /usr/local/bin
-curl -sL "https://dl.k8s.io/release/$(curl -L -s \
-  https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
-  -o /usr/local/bin/kubectl
-curl -sL \
-  https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
-  -o /usr/local/bin/yq
-curl -sL \
-  https://raw.githubusercontent.com/jfcoz/postgresqltuner/master/postgresqltuner.pl \
-  -o /usr/local/bin/postgresqltuner.pl
+curl -L --progress-bar -o /usr/local/bin/kubectl "https://dl.k8s.io/release/$(curl -L -s \
+  https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+curl -L https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+  -o /usr/local/bin/yq --progress-bar
+curl -sL -o /usr/local/bin/postgresqltuner.pl \
+  https://raw.githubusercontent.com/jfcoz/postgresqltuner/master/postgresqltuner.pl
 cd /usr/local/bin
 chmod -v 755 kubectl yq postgresqltuner.pl
 curl -sL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
