@@ -2,7 +2,7 @@
 set -ueo pipefail
 # shellcheck disable=2034
 {
-  IMAGE_VER='002'
+  IMAGE_VER='003'
   DEPENDS='ansible-ubuntu/ ansible-builder/'
   SHARED_ASSETS=(
     '_shared/install/ansible/:_shared/files'
