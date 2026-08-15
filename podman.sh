@@ -30,7 +30,9 @@ apt-get install -y --no-install-recommends podman podman-netavark passt uidmap
 # denied". Shadow the shipped config with a minimal /etc override so rootless
 # falls back to $HOME/.local/share/containers/storage and rootful keeps system
 # defaults. Existing custom configs are preserved.
-[[ ! -e /etc/containers/storage.conf ]] && cat <<'EOF' >/etc/containers/storage.conf
+if [[ ! -e /etc/containers/storage.conf ]]; then
+  cat <<'EOF' >/etc/containers/storage.conf
 [storage]
 driver = "overlay"
 EOF
+fi
