@@ -1,6 +1,6 @@
 --- a/src/app/(dashboard)/dashboard/providers/[id]/page.tsx
 +++ b/src/app/(dashboard)/dashboard/providers/[id]/page.tsx
-@@ -6745,6 +6745,11 @@
+@@ -6745,6 +6745,47 @@
    return providerId === "glm" || providerId === "glm-cn" || providerId === "glmt";
  }
  
@@ -9,28 +9,72 @@
 +  return providerId === "claude" || isGlmProvider(providerId);
 +}
 +
++interface SessionWarmupScheduleFormData {
++  enabled: boolean;
++  fromUtc: string;
++  untilUtc: string;
++}
++
++const SESSION_WARMUP_SCHEDULE_DEFAULT_FROM_UTC = "06:30";
++const SESSION_WARMUP_SCHEDULE_DEFAULT_UNTIL_UTC = "23:30";
++
++// Reads providerSpecificData.sessionWarmupSchedule with a fallback to the
++// default window so the create/edit forms always start from a valid state.
++function readSessionWarmupSchedule(
++  providerSpecificData: Record<string, unknown> | undefined
++): SessionWarmupScheduleFormData {
++  const raw = providerSpecificData?.sessionWarmupSchedule;
++  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
++    const schedule = raw as Record<string, unknown>;
++    return {
++      enabled: schedule.enabled === true,
++      fromUtc:
++        typeof schedule.fromUtc === "string"
++          ? schedule.fromUtc
++          : SESSION_WARMUP_SCHEDULE_DEFAULT_FROM_UTC,
++      untilUtc:
++        typeof schedule.untilUtc === "string"
++          ? schedule.untilUtc
++          : SESSION_WARMUP_SCHEDULE_DEFAULT_UNTIL_UTC,
++    };
++  }
++  return {
++    enabled: false,
++    fromUtc: SESSION_WARMUP_SCHEDULE_DEFAULT_FROM_UTC,
++    untilUtc: SESSION_WARMUP_SCHEDULE_DEFAULT_UNTIL_UTC,
++  };
++}
++
  function parseRoutingTagsInput(value: string): string[] | undefined {
    const tags = Array.from(
      new Set(
-@@ -6889,6 +6894,7 @@
+@@ -6889,6 +6930,12 @@
      customUserAgent: "",
      accountId: "",
      consoleApiKey: "",
 +    sessionWarmupEnabled: false,
++    sessionWarmupSchedule: {
++      enabled: false,
++      fromUtc: SESSION_WARMUP_SCHEDULE_DEFAULT_FROM_UTC,
++      untilUtc: SESSION_WARMUP_SCHEDULE_DEFAULT_UNTIL_UTC,
++    } as SessionWarmupScheduleFormData,
      ccCompatibleContext1m: false,
      passthroughModels: false,
    });
-@@ -7074,6 +7080,9 @@
+@@ -7074,6 +7121,12 @@
        if (provider === "bailian-coding-plan" && formData.consoleApiKey.trim()) {
          providerSpecificData.consoleApiKey = formData.consoleApiKey.trim();
        }
 +      if (supportsSessionWarmup(provider) && formData.sessionWarmupEnabled) {
 +        providerSpecificData.sessionWarmupEnabled = true;
++        if (formData.sessionWarmupSchedule.enabled) {
++          providerSpecificData.sessionWarmupSchedule = formData.sessionWarmupSchedule;
++        }
 +      }
        if (isGooglePse && formData.cx.trim()) {
          providerSpecificData.cx = formData.cx.trim();
        }
-@@ -7510,6 +7519,17 @@
+@@ -7510,6 +7563,75 @@
                onChange={(e) => setFormData({ ...formData, validationModelId: e.target.value })}
                hint={t("validationModelIdHint")}
              />
@@ -45,26 +89,90 @@
 +                description={t("sessionWarmupDescription")}
 +              />
 +            )}
++            {supportsSessionWarmup(provider) && formData.sessionWarmupEnabled && (
++              <div className="flex flex-col gap-2 p-3 rounded-lg border border-border bg-surface/40">
++                <Toggle
++                  size="sm"
++                  checked={formData.sessionWarmupSchedule.enabled}
++                  onChange={(checked) =>
++                    setFormData({
++                      ...formData,
++                      sessionWarmupSchedule: { ...formData.sessionWarmupSchedule, enabled: checked },
++                    })
++                  }
++                  label={t("sessionWarmupScheduleLabel")}
++                  description={t("sessionWarmupScheduleDescription")}
++                />
++                {formData.sessionWarmupSchedule.enabled && (
++                  <div className="grid grid-cols-2 gap-2">
++                    <div>
++                      <label className="text-xs text-text-muted mb-1 block">
++                        {t("sessionWarmupScheduleFromUtc")}
++                      </label>
++                      <input
++                        type="time"
++                        value={formData.sessionWarmupSchedule.fromUtc}
++                        onChange={(e) =>
++                          setFormData({
++                            ...formData,
++                            sessionWarmupSchedule: {
++                              ...formData.sessionWarmupSchedule,
++                              fromUtc: e.target.value,
++                            },
++                          })
++                        }
++                        className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background text-text-main"
++                      />
++                    </div>
++                    <div>
++                      <label className="text-xs text-text-muted mb-1 block">
++                        {t("sessionWarmupScheduleUntilUtc")}
++                      </label>
++                      <input
++                        type="time"
++                        value={formData.sessionWarmupSchedule.untilUtc}
++                        onChange={(e) =>
++                          setFormData({
++                            ...formData,
++                            sessionWarmupSchedule: {
++                              ...formData.sessionWarmupSchedule,
++                              untilUtc: e.target.value,
++                            },
++                          })
++                        }
++                        className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background text-text-main"
++                      />
++                    </div>
++                  </div>
++                )}
++              </div>
++            )}
              <Input
                label={t("priorityLabel")}
                type="number"
-@@ -9083,6 +9103,7 @@
+@@ -9083,6 +9205,12 @@
      codexFastServiceTier: false,
      codexOpenaiStoreEnabled: false,
      consoleApiKey: "",
 +    sessionWarmupEnabled: false,
++    sessionWarmupSchedule: {
++      enabled: false,
++      fromUtc: SESSION_WARMUP_SCHEDULE_DEFAULT_FROM_UTC,
++      untilUtc: SESSION_WARMUP_SCHEDULE_DEFAULT_UNTIL_UTC,
++    } as SessionWarmupScheduleFormData,
      ccCompatibleContext1m: false,
      cloudCodeProjectId: "",
      antigravityClientProfile: "ide",
-@@ -9185,6 +9206,7 @@
+@@ -9185,6 +9313,8 @@
          codexFastServiceTier: codexRequestDefaults.serviceTier === "priority",
          codexOpenaiStoreEnabled: connection.providerSpecificData?.openaiStoreEnabled === true,
          consoleApiKey: existingConsoleApiKey,
 +        sessionWarmupEnabled: connection.providerSpecificData?.sessionWarmupEnabled === true,
++        sessionWarmupSchedule: readSessionWarmupSchedule(connection.providerSpecificData),
          ccCompatibleContext1m: ccRequestDefaults.context1m,
          cloudCodeProjectId:
            (connection.providerSpecificData?.projectId as string) || connection.projectId || "",
-@@ -9388,6 +9410,11 @@
+@@ -9388,6 +9518,15 @@
              updates.providerSpecificData.consoleApiKey = undefined;
            }
          }
@@ -72,21 +180,29 @@
 +          updates.providerSpecificData.sessionWarmupEnabled = formData.sessionWarmupEnabled
 +            ? true
 +            : undefined;
++          updates.providerSpecificData.sessionWarmupSchedule = formData.sessionWarmupSchedule
++            .enabled
++            ? formData.sessionWarmupSchedule
++            : undefined;
 +        }
          if (formData.validationModelId) {
            updates.providerSpecificData.validationModelId = formData.validationModelId;
          }
-@@ -9431,6 +9458,9 @@
+@@ -9431,6 +9570,13 @@
          };
          if (isClaude) {
            updates.providerSpecificData.blockExtraUsage = formData.blockExtraUsage;
 +          updates.providerSpecificData.sessionWarmupEnabled = formData.sessionWarmupEnabled
 +            ? true
 +            : undefined;
++          updates.providerSpecificData.sessionWarmupSchedule = formData.sessionWarmupSchedule
++            .enabled
++            ? formData.sessionWarmupSchedule
++            : undefined;
          }
          if (isCodex) {
            updates.providerSpecificData.requestDefaults = {
-@@ -9739,6 +9769,18 @@
+@@ -9739,6 +9885,77 @@
            </>
          )}
  
@@ -102,28 +218,95 @@
 +          />
 +        )}
 +
++        {supportsSessionWarmup(connection.provider) && formData.sessionWarmupEnabled && (
++          <div className="flex flex-col gap-2 p-3 rounded-lg border border-border bg-surface/40">
++            <Toggle
++              size="sm"
++              checked={formData.sessionWarmupSchedule.enabled}
++              onChange={(checked) =>
++                setFormData({
++                  ...formData,
++                  sessionWarmupSchedule: { ...formData.sessionWarmupSchedule, enabled: checked },
++                })
++              }
++              label={t("sessionWarmupScheduleLabel")}
++              description={t("sessionWarmupScheduleDescription")}
++            />
++            {formData.sessionWarmupSchedule.enabled && (
++              <div className="grid grid-cols-2 gap-2">
++                <div>
++                  <label className="text-xs text-text-muted mb-1 block">
++                    {t("sessionWarmupScheduleFromUtc")}
++                  </label>
++                  <input
++                    type="time"
++                    value={formData.sessionWarmupSchedule.fromUtc}
++                    onChange={(e) =>
++                      setFormData({
++                        ...formData,
++                        sessionWarmupSchedule: {
++                          ...formData.sessionWarmupSchedule,
++                          fromUtc: e.target.value,
++                        },
++                      })
++                    }
++                    className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background text-text-main"
++                  />
++                </div>
++                <div>
++                  <label className="text-xs text-text-muted mb-1 block">
++                    {t("sessionWarmupScheduleUntilUtc")}
++                  </label>
++                  <input
++                    type="time"
++                    value={formData.sessionWarmupSchedule.untilUtc}
++                    onChange={(e) =>
++                      setFormData({
++                        ...formData,
++                        sessionWarmupSchedule: {
++                          ...formData.sessionWarmupSchedule,
++                          untilUtc: e.target.value,
++                        },
++                      })
++                    }
++                    className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background text-text-main"
++                  />
++                </div>
++              </div>
++            )}
++          </div>
++        )}
++
          {usesBaseUrl && (
            <Input
              label={t("baseUrlLabel")}
 --- a/src/i18n/messages/en.json
 +++ b/src/i18n/messages/en.json
-@@ -3592,6 +3592,8 @@
+@@ -3592,6 +3592,12 @@
      "consoleApiKeyOracleHint": "Console Api Key Oracle Hint",
      "consoleApiKeyOracleLabel": "Console Api Key Oracle Label",
      "consoleApiKeyOraclePlaceholder": "Console Api Key Oracle Placeholder",
 +    "sessionWarmupLabel": "Auto session warmup",
 +    "sessionWarmupDescription": "Periodically sends a tiny request to start the 5h quota window so your first real request does not pay the cold-start cost. Only fires when the window has not been opened yet.",
++    "sessionWarmupScheduleLabel": "Warmup schedule",
++    "sessionWarmupScheduleDescription": "Warmup only runs inside this window (UTC). Outside the window it is logged but skipped; when the window opens, the first request is delayed by a short random snooze.",
++    "sessionWarmupScheduleFromUtc": "From (UTC)",
++    "sessionWarmupScheduleUntilUtc": "Until (UTC)",
      "cpaModeDisabledTitle": "CLIProxyAPI compatibility mode is disabled",
      "cpaModeEnabledTitle": "CLIProxyAPI compatibility mode is enabled",
      "customUserAgentHint": "Custom User Agent Hint",
 --- a/src/i18n/messages/ru.json
 +++ b/src/i18n/messages/ru.json
-@@ -3592,6 +3592,8 @@
+@@ -3592,6 +3592,12 @@
      "consoleApiKeyOracleHint": "Console Api Key Oracle Hint",
      "consoleApiKeyOracleLabel": "Console Api Key Oracle Label",
      "consoleApiKeyOraclePlaceholder": "Console Api Key Oracle Placeholder",
 +    "sessionWarmupLabel": "Автоматический прогрев сессии",
 +    "sessionWarmupDescription": "Периодически отправляет крошечный запрос, чтобы открыть 5-часовое окно квоты — тогда твой первый реальный запрос не платит за холодный старт. Срабатывает только если окно ещё не открыто.",
++    "sessionWarmupScheduleLabel": "Расписание прогрева",
++    "sessionWarmupScheduleDescription": "Прогрев выполняется только внутри этого окна (UTC). Вне окна событие логируется, но пропускается; при входе в окно первый запрос откладывается на короткий случайный snooze.",
++    "sessionWarmupScheduleFromUtc": "С (UTC)",
++    "sessionWarmupScheduleUntilUtc": "До (UTC)",
      "cpaModeDisabledTitle": "Cpa Mode Disabled Title",
      "cpaModeEnabledTitle": "Cpa Mode Enabled Title",
      "customUserAgentHint": "Custom User Agent Hint",
@@ -147,7 +330,7 @@
      console.log("[COMPLIANCE] Audit log table initialized");
 --- /dev/null
 +++ b/src/lib/sessionWarmupJob.ts
-@@ -0,0 +1,660 @@
+@@ -0,0 +1,786 @@
 +/**
 + * Session Warmup Job
 + *
@@ -226,6 +409,12 @@
 +  warmupFailureCount: number;
 +  warmupBackoffUntil: number;
 +  sessionEndSnoozeUntil: number;
++  /** ms, until this moment warmup is skipped even though we're inside the
++   *  configured schedule window (armed once per window entry). */
++  scheduleEnterSnoozeUntil: number;
++  /** currentWindowKey() of the schedule window we last armed the enter-snooze
++   *  for; "" if we haven't entered a schedule window yet. */
++  lastScheduleWindowKey: string;
 +}
 +
 +const inMemoryState = new Map<string, InMemoryState>();
@@ -237,6 +426,8 @@
 +    warmupFailureCount: 0,
 +    warmupBackoffUntil: 0,
 +    sessionEndSnoozeUntil: 0,
++    scheduleEnterSnoozeUntil: 0,
++    lastScheduleWindowKey: "",
 +  };
 +}
 +
@@ -354,6 +545,87 @@
 +function isWarmupEnabled(conn: Record<string, unknown>): boolean {
 +  const psd = asRecord(conn.providerSpecificData);
 +  return psd.sessionWarmupEnabled === true;
++}
++
++// ── Warmup schedule (UTC time-of-day window) ─────────────────────────────────
++
++interface WarmupSchedule {
++  enabled: boolean;
++  fromUtc: string;
++  untilUtc: string;
++}
++
++/**
++ * "HH:MM" -> minutes since UTC midnight, in [0, 1440). Returns null on any
++ * malformed input so callers can fall back to "no schedule".
++ */
++function parseHHMMToMinutes(value: string): number | null {
++  if (typeof value !== "string") return null;
++  const match = /^([0-9]{1,2}):([0-9]{2})$/.exec(value.trim());
++  if (!match) return null;
++  const hours = Number.parseInt(match[1], 10);
++  const minutes = Number.parseInt(match[2], 10);
++  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
++  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
++  return hours * 60 + minutes;
++}
++
++/**
++ * Reads and validates providerSpecificData.sessionWarmupSchedule. Returns
++ * null when the schedule is absent, disabled, malformed, or degenerate
++ * (fromUtc === untilUtc, which is defined as an always-empty window).
++ */
++function readWarmupSchedule(conn: Record<string, unknown>): WarmupSchedule | null {
++  const psd = asRecord(conn.providerSpecificData);
++  const raw = psd.sessionWarmupSchedule;
++  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
++  const schedule = raw as Record<string, unknown>;
++  if (schedule.enabled !== true) return null;
++  if (typeof schedule.fromUtc !== "string" || typeof schedule.untilUtc !== "string") return null;
++
++  const fromMin = parseHHMMToMinutes(schedule.fromUtc);
++  const untilMin = parseHHMMToMinutes(schedule.untilUtc);
++  if (fromMin === null || untilMin === null) return null;
++  if (fromMin === untilMin) return null;
++
++  return { enabled: true, fromUtc: schedule.fromUtc, untilUtc: schedule.untilUtc };
++}
++
++/**
++ * Whether `now` (UTC) falls inside the schedule's [fromUtc, untilUtc) window.
++ * Handles windows that wrap past midnight UTC (fromMin > untilMin).
++ */
++function isWithinSchedule(schedule: WarmupSchedule, now: Date): boolean {
++  const fromMin = parseHHMMToMinutes(schedule.fromUtc);
++  const untilMin = parseHHMMToMinutes(schedule.untilUtc);
++  if (fromMin === null || untilMin === null) return false;
++  const nowMin = now.getUTCHours() * 60 + now.getUTCMinutes();
++  if (fromMin < untilMin) {
++    return nowMin >= fromMin && nowMin < untilMin;
++  }
++  // Window wraps past midnight UTC, e.g. 22:00 -> 06:00.
++  return nowMin >= fromMin || nowMin < untilMin;
++}
++
++/**
++ * Stable key identifying the current "entry" into the schedule window, so a
++ * connection only arms the enter-snooze once per window instead of on every
++ * sweep. Format: `${YYYY-MM-DD of the day the current window started}:${fromUtc}`.
++ * For a wrap-past-midnight window observed before untilUtc, the window
++ * actually started the previous UTC day.
++ */
++function currentWindowKey(schedule: WarmupSchedule, now: Date): string {
++  const fromMin = parseHHMMToMinutes(schedule.fromUtc);
++  const untilMin = parseHHMMToMinutes(schedule.untilUtc);
++  const nowMin = now.getUTCHours() * 60 + now.getUTCMinutes();
++
++  let windowStartDate = now;
++  if (fromMin !== null && untilMin !== null && fromMin > untilMin && nowMin < untilMin) {
++    windowStartDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
++  }
++
++  const isoDate = windowStartDate.toISOString().slice(0, 10);
++  return `${isoDate}:${schedule.fromUtc}`;
 +}
 +
 +function getLastWarmupAt(conn: Record<string, unknown>): number {
@@ -644,6 +916,43 @@
 +
 +  if (!isWarmupEnabled(conn)) {
 +    return;
++  }
++
++  const schedule = readWarmupSchedule(conn);
++  if (schedule) {
++    if (!isWithinSchedule(schedule, new Date(now))) {
++      // Out of schedule window — log on every sweep, do not suppress.
++      console.log(
++        `${LOG_PREFIX} Skipping ${tag} (out of schedule, window ${schedule.fromUtc}-${schedule.untilUtc} UTC)`
++      );
++      return;
++    }
++
++    const key = currentWindowKey(schedule, new Date(now));
++    const memNow = inMemoryState.get(connectionId) ?? emptyState();
++
++    if (memNow.lastScheduleWindowKey !== key) {
++      // First sweep inside this schedule window — arm the enter-snooze using
++      // the same jitter constants as the post-session snooze.
++      const jitter = sessionEndJitter();
++      inMemoryState.set(connectionId, {
++        ...memNow,
++        lastScheduleWindowKey: key,
++        scheduleEnterSnoozeUntil: now + jitter,
++      });
++      console.log(
++        `${LOG_PREFIX} Schedule window opened for ${tag} (${schedule.fromUtc}-${schedule.untilUtc} UTC), snooze +${fmtDuration(jitter)} before warmup`
++      );
++      return;
++    }
++
++    if (memNow.scheduleEnterSnoozeUntil > now) {
++      const left = fmtDuration(memNow.scheduleEnterSnoozeUntil - now);
++      console.log(
++        `${LOG_PREFIX} Snoozing ${tag} (schedule window opened, warmup in ${left})`
++      );
++      return;
++    }
 +  }
 +
 +  const mem = inMemoryState.get(connectionId);
