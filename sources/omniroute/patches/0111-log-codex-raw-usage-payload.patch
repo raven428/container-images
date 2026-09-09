@@ -1,0 +1,514 @@
+--- a/open-sse/services/usage.ts
++++ b/open-sse/services/usage.ts
+@@ -2160,6 +2160,18 @@
+     });
+ 
+     if (!response.ok) {
++      // TEMP diagnostic (patch 0111): surface failed usage fetches too —
++      // otherwise a 401/403/5xx silently turns into "no session" and the
++      // warmup job keeps firing with zero trace in the logs.
++      let nonOkSnippet = "";
++      try {
++        nonOkSnippet = (await response.clone().text()).slice(0, 300);
++      } catch {
++        // body unavailable — status-only log below still applies
++      }
++      console.warn(
++        `[CodexUsage] non-ok payload for ${accountId ?? "unknown-workspace"}: ${JSON.stringify({ status: response.status, body: nonOkSnippet })}`
++      );
+       if (response.status === 401 || response.status === 403) {
+         return {
+           message: `Codex token expired or access denied. Please re-authenticate the connection.`,
+@@ -2170,6 +2182,23 @@
+ 
+     const data = await response.json();
+ 
++    // TEMP diagnostic (patch 0111): dump the raw Codex rate-limit payload
++    // before any parsing/conversion, so the real reset_at/used_percent/
++    // reset_after_seconds values can be inspected. Remove once the
++    // "window not opened" threshold in getCodexUsage is tuned for real data.
++    const rawRateLimit = getFieldValue(data, "rate_limit", "rateLimit");
++    const rawCodeReviewRateLimit = getFieldValue(
++      data,
++      "code_review_rate_limit",
++      "codeReviewRateLimit"
++    );
++    console.log(
++      `[CodexUsage] raw payload for ${accountId ?? "unknown-workspace"}: ${JSON.stringify({
++        rate_limit: rawRateLimit,
++        code_review_rate_limit: rawCodeReviewRateLimit,
++      })}`
++    );
++
+     // Parse rate limit info (supports both snake_case and camelCase)
+     const rateLimit = toRecord(getFieldValue(data, "rate_limit", "rateLimit"));
+     const primaryWindow = toRecord(getFieldValue(rateLimit, "primary_window", "primaryWindow"));
+--- a/src/lib/sessionWarmupJob.ts
++++ b/src/lib/sessionWarmupJob.ts
+@@ -36,6 +36,7 @@
+   buildGlmCodingHeaders,
+   buildGlmOpenAIChatUrl,
+ } from "@omniroute/open-sse/config/glmProvider";
++import { logCodexRawExchange } from "@omniroute/open-sse/executors/codex.ts";
+ 
+ // ── Constants ────────────────────────────────────────────────────────────────
+ 
+@@ -632,7 +633,9 @@
+   const connectionId = typeof conn.id === "string" ? conn.id : undefined;
+ 
+   return runWarmup(async () => {
+-    const { response } = await getExecutor(CODEX_PROVIDER).execute({
++    const { response, url, headers, transformedBody } = await getExecutor(
++      CODEX_PROVIDER
++    ).execute({
+       model: testModelId,
+       // Native Responses API shape; no max_tokens/max_output_tokens — the
+       // codex executor strips both from the body before sending anyway.
+@@ -665,6 +668,16 @@
+         );
+       },
+     });
++    // TEMP diagnostic (patch 0111): dump the exact request/response pair the
++    // warmup produced, including the upstream URL. Shares the capped reader
++    // with the executor-level [CodexExec] logging so an endless SSE body
++    // cannot wedge the job. Remove together with patch 0111.
++    logCodexRawExchange(`SessionWarmup][Codex:${connectionId ?? "unknown"}`, {
++      url,
++      headers,
++      body: transformedBody,
++      response: response as unknown as Response,
++    });
+     return response as unknown as Response;
+   });
+ }
+--- a/open-sse/executors/codex.ts
++++ b/open-sse/executors/codex.ts
+@@ -880,6 +880,131 @@
+   return result;
+ }
+ 
++// ─── TEMP diagnostic logging (patch 0111) ───────────────────────────────────
++// Logs every Codex HTTP exchange (request body + response status/body) while
++// the "warmup request visibility" investigation runs. Lives here so ALL Codex
++// traffic is covered — warmup job, chat pipeline, preflight — not just one
++// caller. Unconditional on purpose: the failing exchange only reproduces in
++// prod. Remove together with the rest of patch 0111 once tuned.
++
++const CODEX_DIAG_BODY_CAP_BYTES = 4096;
++const CODEX_DIAG_BODY_TIMEOUT_MS = 5_000;
++
++function redactAuthorization(headers: Record<string, string>): Record<string, string> {
++  const redacted: Record<string, string> = {};
++  for (const [name, value] of Object.entries(headers ?? {})) {
++    redacted[name] = name.toLowerCase() === "authorization" ? "<redacted>" : value;
++  }
++  return redacted;
++}
++
++/**
++ * Reads at most `maxBytes` from a (possibly never-ending SSE) body, giving up
++ * after `timeoutMs`, so a diagnostic read can never wedge the caller. Always
++ * cancels the reader: the clone this runs on exists only for logging.
++ */
++async function readBodyCapped(
++  body: ReadableStream<Uint8Array> | null,
++  maxBytes: number,
++  timeoutMs: number
++): Promise<string> {
++  if (!body) return "";
++  const reader = body.getReader();
++  const chunks: Uint8Array[] = [];
++  let total = 0;
++  const deadline = Date.now() + timeoutMs;
++  try {
++    while (total < maxBytes) {
++      const remaining = deadline - Date.now();
++      if (remaining <= 0) break;
++      let timeoutId: ReturnType<typeof setTimeout> | null = null;
++      const timeout = new Promise<{ done: true; value: undefined }>((resolve) => {
++        timeoutId = setTimeout(() => resolve({ done: true, value: undefined }), remaining);
++      });
++      let next: ReadableStreamReadResult<Uint8Array>;
++      try {
++        next = await Promise.race([reader.read(), timeout]);
++      } finally {
++        if (timeoutId) clearTimeout(timeoutId);
++      }
++      if (next.done) break;
++      if (next.value) {
++        chunks.push(next.value);
++        total += next.value.byteLength;
++      }
++    }
++  } catch {
++    // best-effort diagnostic read
++  } finally {
++    try {
++      await reader.cancel();
++    } catch {
++      // already closed
++    }
++  }
++  const collected = chunks.reduce((n, c) => n + c.byteLength, 0);
++  const out = new Uint8Array(Math.min(collected, maxBytes));
++  let offset = 0;
++  for (const chunk of chunks) {
++    if (offset >= out.byteLength) break;
++    out.set(chunk.subarray(0, out.byteLength - offset), offset);
++    offset += chunk.byteLength;
++  }
++  return new TextDecoder().decode(out);
++}
++
++/**
++ * Shared raw-exchange logger (patch 0111). Logs the request side immediately
++ * and the response side via a clone with a capped read. Never throws.
++ */
++export function logCodexRawExchange(
++  logTag: string,
++  exchange: {
++    url: string;
++    headers: Record<string, string>;
++    body: unknown;
++    response: Response;
++  }
++): void {
++  try {
++    console.log(
++      `[${logTag}] raw request: ${JSON.stringify({
++        url: exchange.url,
++        headers: redactAuthorization(exchange.headers ?? {}),
++        body: exchange.body ?? null,
++      })}`
++    );
++    const responseCopy = exchange.response.clone();
++    void (async () => {
++      try {
++        const bodyText = await readBodyCapped(
++          responseCopy.body,
++          CODEX_DIAG_BODY_CAP_BYTES,
++          CODEX_DIAG_BODY_TIMEOUT_MS
++        );
++        console.log(
++          `[${logTag}] raw response: ${JSON.stringify({
++            url: exchange.url,
++            status: responseCopy.status,
++            headers: Object.fromEntries(responseCopy.headers),
++            body: bodyText,
++          })}`
++        );
++      } catch (err) {
++        console.warn(
++          `[${logTag}] failed to read raw response body:`,
++          err instanceof Error ? err.message : String(err)
++        );
++      }
++    })();
++  } catch (err) {
++    console.warn(
++      `[${logTag}] failed to serialize raw exchange:`,
++      err instanceof Error ? err.message : String(err)
++    );
++  }
++}
++
+ /**
+  * Codex Executor - handles OpenAI Codex API (Responses API format)
+  * Automatically injects default instructions if missing.
+@@ -911,7 +1036,15 @@
+     const nextInput = { ...input, credentials };
+ 
+     if (!isCodexResponsesWebSocketRequired(nextInput.model, nextInput.credentials)) {
+-      return super.execute(nextInput);
++      const result = await super.execute(nextInput);
++      // TEMP diagnostic (patch 0111): every HTTP Codex exchange gets logged.
++      logCodexRawExchange("CodexExec", {
++        url: result.url,
++        headers: result.headers,
++        body: result.transformedBody,
++        response: result.response,
++      });
++      return result;
+     }
+ 
+     const url = CODEX_RESPONSES_WS_URL;
+--- /dev/null
++++ b/tests/unit/session-warmup-codex-logging.test.ts
+@@ -0,0 +1,277 @@
++// Unit tests for the TEMP Codex raw-exchange diagnostics (patch 0111).
++//
++// Exercises the REAL executor pipeline with a stubbed globalThis.fetch and
++// asserts the exact diagnostic output:
++//   - [SessionWarmup][Codex:<id>] raw request / raw response  (warmup path)
++//   - [CodexExec] raw request / raw response                   (executor hook)
++//   - [CodexUsage] raw payload / non-ok payload                (quota fetch)
++// plus Authorization redaction on every logged header set.
++//
++// These tests die together with patch 0111 — the diagnostics are temporary.
++
++import test from "node:test";
++import assert from "node:assert/strict";
++import fs from "node:fs";
++import os from "node:os";
++import path from "node:path";
++
++const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omni-warmup-logging-"));
++process.env.DATA_DIR = TEST_DATA_DIR;
++process.env.DISABLE_SQLITE_AUTO_BACKUP = "true";
++
++const originalFetch = globalThis.fetch;
++
++const logLines: string[] = [];
++const warnLines: string[] = [];
++const originalLog = console.log;
++const originalWarn = console.warn;
++const originalError = console.error;
++
++const localDb = await import("../../src/lib/localDb.ts");
++const warmup = await import("../../src/lib/sessionWarmupJob.ts");
++
++const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
++
++const calls: { url: string; init?: RequestInit }[] = [];
++let usagePayload: () => Record<string, unknown> = () => ({});
++let usageStatus: () => number = () => 200;
++let responsesBody: string = 'data: {"type":"response.completed"}\n\ndata: [DONE]\n\n';
++
++// Install AFTER imports: proxyFetch's module side effect replaces
++// globalThis.fetch with an undici-backed patchedFetch, which would bypass
++// the stub (and hang on real network egress).
++globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
++  const url = typeof input === "string" ? input : input.toString();
++  calls.push({ url, init });
++  if (url.includes("/backend-api/wham/usage")) {
++    return new Response(
++      usageStatus() === 200 ? JSON.stringify(usagePayload()) : "usage backend exploded",
++      {
++        status: usageStatus(),
++        headers: { "content-type": "application/json" },
++      }
++    );
++  }
++  if (url.includes("/backend-api/codex/responses")) {
++    return new Response(responsesBody, {
++      status: 200,
++      headers: { "content-type": "text/event-stream" },
++    });
++  }
++  return new Response("{}", { status: 200 });
++}) as typeof fetch;
++
++async function resetStorage() {
++  const coreDb = await import("../../src/lib/db/core.ts");
++  coreDb.resetDbInstance();
++  fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
++  fs.mkdirSync(TEST_DATA_DIR, { recursive: true });
++}
++
++function floatingWindowPayload(): Record<string, unknown> {
++  return {
++    rate_limit: {
++      allowed: true,
++      limit_reached: false,
++      primary_window: {
++        used_percent: 0,
++        limit_window_seconds: 18000,
++        reset_after_seconds: 18000,
++        reset_at: Math.floor(Date.now() / 1000) + 18000,
++      },
++      secondary_window: {
++        used_percent: 46,
++        limit_window_seconds: 604800,
++        reset_after_seconds: 311156,
++        reset_at: Math.floor(Date.now() / 1000) + 311156,
++      },
++    },
++  };
++}
++
++function activeSessionPayload(): Record<string, unknown> {
++  return {
++    rate_limit: {
++      allowed: true,
++      limit_reached: false,
++      primary_window: {
++        used_percent: 3,
++        limit_window_seconds: 18000,
++        reset_after_seconds: 1234,
++        reset_at: Math.floor(Date.now() / 1000) + 1234,
++      },
++      secondary_window: {
++        used_percent: 46,
++        limit_window_seconds: 604800,
++        reset_after_seconds: 311156,
++        reset_at: Math.floor(Date.now() / 1000) + 311156,
++      },
++    },
++  };
++}
++
++async function createWarmupConnection(): Promise<string> {
++  const created = await localDb.createProviderConnection({
++    provider: "codex",
++    name: "codex-logging-test",
++    authType: "oauth",
++    email: "logging@example.com",
++    accessToken: "super-secret-access-token",
++    refreshToken: "super-secret-refresh-token",
++    tokenExpiresAt: new Date(Date.now() + 3600_000).toISOString(),
++    isActive: true,
++    providerSpecificData: {
++      workspaceId: "ws-logging",
++      sessionWarmupEnabled: true,
++    },
++  });
++  assert.ok(created?.id, "connection must be created");
++  return created.id as string;
++}
++
++async function runWarmupSweep(connectionId: string): Promise<void> {
++  const conn = (await localDb.getProviderConnectionById(connectionId)) as unknown as Record<
++    string,
++    unknown
++  >;
++  await warmup.processConnection(conn);
++}
++
++async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<boolean> {
++  const deadline = Date.now() + timeoutMs;
++  while (Date.now() < deadline) {
++    if (predicate()) return true;
++    await new Promise((resolve) => setTimeout(resolve, 25));
++  }
++  return predicate();
++}
++
++test.beforeEach(async () => {
++  await resetStorage();
++  warmup._resetSessionWarmupState();
++  calls.length = 0;
++  logLines.length = 0;
++  warnLines.length = 0;
++  usagePayload = () => floatingWindowPayload();
++  usageStatus = () => 200;
++  responsesBody = 'data: {"type":"response.completed"}\n\ndata: [DONE]\n\n';
++  console.log = (...args: unknown[]) => {
++    logLines.push(args.map(String).join(" "));
++  };
++  console.warn = (...args: unknown[]) => {
++    warnLines.push(args.map(String).join(" "));
++  };
++  console.error = () => {};
++});
++
++test.afterEach(() => {
++  console.log = originalLog;
++  console.warn = originalWarn;
++  console.error = originalError;
++});
++
++test.after(() => {
++  globalThis.fetch = originalFetch;
++});
++
++test("warmup exchange is fully logged: url, redacted headers, body, response", async () => {
++  const id = await createWarmupConnection();
++  await runWarmupSweep(id);
++
++  const requestLine = logLines.find((line) =>
++    line.includes(`[SessionWarmup][Codex:${id}] raw request:`)
++  );
++  assert.ok(requestLine, "raw request line must be logged");
++  const request = JSON.parse(requestLine.split(" raw request: ")[1]) as {
++    url: string;
++    headers: Record<string, string>;
++    body: Record<string, unknown>;
++  };
++  assert.equal(request.url, "https://chatgpt.com/backend-api/codex/responses");
++  assert.equal(request.headers.Authorization, "<redacted>");
++  assert.ok(!JSON.stringify(request).includes("super-secret-access-token"));
++  assert.equal(request.body.model, "gpt-5.6-luna");
++
++  const responseSeen = await waitFor(() =>
++    logLines.some((line) => line.includes(`[SessionWarmup][Codex:${id}] raw response:`))
++  );
++  assert.ok(responseSeen, "raw response line must be logged");
++  const responseLine = logLines.find((line) =>
++    line.includes(`[SessionWarmup][Codex:${id}] raw response:`)
++  )!;
++  const response = JSON.parse(responseLine.split(" raw response: ")[1]) as {
++    status: number;
++    body: string;
++  };
++  assert.equal(response.status, 200);
++  assert.ok(response.body.includes("response.completed"));
++});
++
++test("executor-level [CodexExec] logging covers the same exchange", async () => {
++  const id = await createWarmupConnection();
++  await runWarmupSweep(id);
++
++  const execRequest = logLines.find((line) => line.startsWith("[CodexExec] raw request:"));
++  assert.ok(execRequest, "executor request line must be logged");
++  const request = JSON.parse(execRequest.split(" raw request: ")[1]) as {
++    url: string;
++    headers: Record<string, string>;
++  };
++  assert.equal(request.url, "https://chatgpt.com/backend-api/codex/responses");
++  assert.equal(request.headers.Authorization, "<redacted>");
++
++  const responseSeen = await waitFor(() =>
++    logLines.some((line) => line.startsWith("[CodexExec] raw response:"))
++  );
++  assert.ok(responseSeen, "executor response line must be logged");
++  assert.ok(
++    logLines.some(
++      (line) =>
++        line.startsWith("[CodexExec] raw response:") && line.includes("response.completed")
++    ),
++    "executor response line must carry the body"
++  );
++
++  // The quota fetch must NOT go through the executor hook.
++  assert.equal(
++    logLines.filter((line) => line.startsWith("[CodexExec] raw request:")).length,
++    calls.filter((c) => c.url.includes("/codex/responses")).length,
++    "one executor log per /codex/responses call, none for the usage fetch"
++  );
++});
++
++test("quota fetch logs the raw payload on ok and a warning on non-ok", async () => {
++  const id = await createWarmupConnection();
++
++  usageStatus = () => 503;
++  await runWarmupSweep(id);
++  assert.ok(
++    warnLines.some((line) => line.includes("[CodexUsage] non-ok payload") && line.includes("503")),
++    "non-ok usage response must be logged"
++  );
++  assert.ok(
++    logLines.some((line) => line.includes("Sending warmup to codex/")),
++    "a failing quota endpoint must still let the warmup fire (cold cache => null session)"
++  );
++
++  // Post-warmup: flip the quota endpoint back to a healthy payload and rewind
++  // the warmup TTL so the next sweep actually refreshes quotas again (a fresh
++  // warmup would TTL-skip before ever touching the usage endpoint).
++  usageStatus = () => 200;
++  usagePayload = () => activeSessionPayload();
++  await localDb.updateProviderConnection(id, {
++    providerSpecificData: {
++      workspaceId: "ws-logging",
++      sessionWarmupEnabled: true,
++      lastSessionWarmupAt: new Date(Date.now() - 61 * 60_000).toISOString(),
++    },
++  });
++  await runWarmupSweep(id);
++  assert.ok(
++    logLines.some((line) => line.includes("[CodexUsage] raw payload for ws-logging")),
++    "healthy usage responses must dump the raw payload"
++  );
++  const rawLine = logLines.find((line) => line.includes("[CodexUsage] raw payload"))!;
++  assert.ok(rawLine.includes('"primary_window"'));
++  assert.ok(rawLine.includes('"reset_after_seconds":1234'));
++});
