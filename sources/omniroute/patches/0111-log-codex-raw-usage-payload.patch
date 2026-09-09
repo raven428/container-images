@@ -1,0 +1,111 @@
+--- a/open-sse/services/usage.ts
++++ b/open-sse/services/usage.ts
+@@ -2160,6 +2160,18 @@
+     });
+ 
+     if (!response.ok) {
++      // TEMP diagnostic (patch 0111): surface failed usage fetches too —
++      // otherwise a 401/403/5xx silently turns into "no session" and the
++      // warmup job keeps firing with zero trace in the logs.
++      let nonOkSnippet = "";
++      try {
++        nonOkSnippet = (await response.clone().text()).slice(0, 300);
++      } catch {
++        // body unavailable — status-only log below still applies
++      }
++      console.warn(
++        `[CodexUsage] non-ok payload for ${accountId ?? "unknown-workspace"}: ${JSON.stringify({ status: response.status, body: nonOkSnippet })}`
++      );
+       if (response.status === 401 || response.status === 403) {
+         return {
+           message: `Codex token expired or access denied. Please re-authenticate the connection.`,
+@@ -2170,6 +2182,23 @@
+ 
+     const data = await response.json();
+ 
++    // TEMP diagnostic (patch 0111): dump the raw Codex rate-limit payload
++    // before any parsing/conversion, so the real reset_at/used_percent/
++    // reset_after_seconds values can be inspected. Remove once the
++    // "window not opened" threshold in getCodexUsage is tuned for real data.
++    const rawRateLimit = getFieldValue(data, "rate_limit", "rateLimit");
++    const rawCodeReviewRateLimit = getFieldValue(
++      data,
++      "code_review_rate_limit",
++      "codeReviewRateLimit"
++    );
++    console.log(
++      `[CodexUsage] raw payload for ${accountId ?? "unknown-workspace"}: ${JSON.stringify({
++        rate_limit: rawRateLimit,
++        code_review_rate_limit: rawCodeReviewRateLimit,
++      })}`
++    );
++
+     // Parse rate limit info (supports both snake_case and camelCase)
+     const rateLimit = toRecord(getFieldValue(data, "rate_limit", "rateLimit"));
+     const primaryWindow = toRecord(getFieldValue(rateLimit, "primary_window", "primaryWindow"));
+--- a/open-sse/executors/codex.ts
++++ b/open-sse/executors/codex.ts
+@@ -880,6 +880,46 @@
+   return result;
+ }
+ 
++// ─── TEMP diagnostic logging (patch 0111) ───────────────────────────────────
++// Logs every Codex HTTP exchange (request body + response status/body) while
++// the "warmup request visibility" investigation runs. Lives here so ALL Codex
++// traffic is covered — warmup job, chat pipeline, preflight — not just one
++// caller. Unconditional on purpose: the failing exchange only reproduces in
++// prod. Remove together with the rest of patch 0111 once tuned.
++
++function redactAuthorization(headers: Record<string, string>): Record<string, string> {
++  const redacted: Record<string, string> = {};
++  for (const [name, value] of Object.entries(headers ?? {})) {
++    redacted[name] = name.toLowerCase() === "authorization" ? "<redacted>" : value;
++  }
++  return redacted;
++}
++
++export function logCodexRawExchange(
++  logTag: string,
++  exchange: {
++    url: string;
++    headers: Record<string, string>;
++    body: unknown;
++    response: Response;
++  }
++): void {
++  try {
++    console.log(
++      `[${logTag}] raw request: ${JSON.stringify({
++        url: exchange.url,
++        headers: redactAuthorization(exchange.headers ?? {}),
++        body: exchange.body ?? null,
++      })}`
++    );
++  } catch (err) {
++    console.warn(
++      `[${logTag}] failed to serialize raw exchange:`,
++      err instanceof Error ? err.message : String(err)
++    );
++  }
++}
++
+ /**
+  * Codex Executor - handles OpenAI Codex API (Responses API format)
+  * Automatically injects default instructions if missing.
+@@ -911,7 +951,15 @@
+     const nextInput = { ...input, credentials };
+ 
+     if (!isCodexResponsesWebSocketRequired(nextInput.model, nextInput.credentials)) {
+-      return super.execute(nextInput);
++      const result = await super.execute(nextInput);
++      // TEMP diagnostic (patch 0111): every HTTP Codex exchange gets logged.
++      logCodexRawExchange("CodexExec", {
++        url: result.url,
++        headers: result.headers,
++        body: result.transformedBody,
++        response: result.response,
++      });
++      return result;
+     }
+ 
+     const url = CODEX_RESPONSES_WS_URL;
