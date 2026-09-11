@@ -332,7 +332,7 @@
      console.log("[COMPLIANCE] Audit log table initialized");
 --- /dev/null
 +++ b/src/lib/sessionWarmupJob.ts
-@@ -0,0 +1,989 @@
+@@ -0,0 +1,981 @@
 +/**
 + * Session Warmup Job
 + *
@@ -746,17 +746,6 @@
 +  }
 +}
 +
-+async function getSessionResetAt(connectionId: string): Promise<string | null> {
-+  // extractSessionResetAt re-checks `resetMs > Date.now()` on every read (not
-+  // just at cache-write time), so a non-null hit is already a future timestamp.
-+  // The caller still branches on `resetAtMs > now` only to separate an open
-+  // window from the null/refresh paths — not because this value could be stale.
-+  const cached = readResetAtFromCache(connectionId);
-+  if (cached !== null) return cached;
-+
-+  return refreshCache(connectionId);
-+}
-+
 +// ── Warmup request ───────────────────────────────────────────────────────────
 +
 +interface WarmupOutcome {
@@ -1148,35 +1137,6 @@
 +    return;
 +  }
 +
-+  // While the session window is still open, skip without re-reading the cache.
-+  // knownSessionResetAt holds the REAL window end (no jitter), so this branch is
-+  // provider-agnostic — it no longer depends on the per-provider cache key that
-+  // disappears once the window closes (the bug that made claude skip the snooze).
-+  if (mem && mem.knownSessionResetAt > now) {
-+    const left = fmtDuration(mem.knownSessionResetAt - now);
-+    const endsAt = new Date(mem.knownSessionResetAt).toISOString();
-+    console.log(
-+      `${LOG_PREFIX} Skipping ${tag} (session active, ends ${endsAt}, ${left} left)`
-+    );
-+    return;
-+  }
-+
-+  // Window just closed: arm the post-session snooze once, uniformly for every
-+  // provider, instead of immediately firing a warmup.
-+  if (mem && mem.knownSessionResetAt > 0 && mem.sessionEndSnoozeUntil <= now) {
-+    const jitter = sessionEndJitter();
-+    const endsAt = new Date(mem.knownSessionResetAt).toISOString();
-+    inMemoryState.set(connectionId, {
-+      ...mem,
-+      knownSessionResetAt: 0,
-+      sessionEndSnoozeUntil: now + jitter,
-+    });
-+    console.log(
-+      `${LOG_PREFIX} Session expired for ${tag} (resetAt ${endsAt}), snooze +${fmtDuration(jitter)} before warmup`
-+    );
-+    return;
-+  }
-+
 +  if (mem && mem.sessionEndSnoozeUntil > now) {
 +    const left = fmtDuration(mem.sessionEndSnoozeUntil - now);
 +    console.log(
@@ -1222,25 +1182,35 @@
 +    return;
 +  }
 +
++  // Read the DB cache exactly once and branch explicitly on the three states,
++  // instead of collapsing "no entry" and "entry with resetAt=null" into a single
++  // null via readResetAtFromCache. Only a truly cold cache warrants a forced
++  // refreshCache — a filled cache with resetAt=null already carries the "window
++  // is closed" signal from usage.ts and must not trigger a per-sweep API call.
 +  let sessionResetAt: string | null = null;
-+  try {
-+    sessionResetAt = await getSessionResetAt(connectionId);
-+  } catch (err) {
-+    patchState(connectionId, {
-+      fetchCooldownUntil: Date.now() + FETCH_FAILURE_BACKOFF_MS,
-+    });
-+    console.warn(
-+      `${LOG_PREFIX} ! ${tag} quota read threw, cooldown ${FETCH_FAILURE_BACKOFF_MS / 1000}s`,
-+      err instanceof Error ? err.message : String(err)
-+    );
-+    return;
++  const dbCache = getProviderLimitsCache(connectionId);
++  if (!dbCache) {
++    try {
++      sessionResetAt = await refreshCache(connectionId);
++    } catch (err) {
++      patchState(connectionId, {
++        fetchCooldownUntil: Date.now() + FETCH_FAILURE_BACKOFF_MS,
++      });
++      console.warn(
++        `${LOG_PREFIX} ! ${tag} quota read threw, cooldown ${FETCH_FAILURE_BACKOFF_MS / 1000}s`,
++        err instanceof Error ? err.message : String(err)
++      );
++      return;
++    }
++  } else {
++    sessionResetAt = readResetAtFromCache(connectionId);
 +  }
 +
 +  const resetAtMs = sessionResetAt ? Date.parse(sessionResetAt) : NaN;
-+  // Only a resetAt strictly in the future means the 5h window is open. A past or
-+  // unparseable value (e.g. stale quotas returned after a fail-closed proxy abort)
-+  // must NOT count as "session active" — otherwise the job would return here every
-+  // sweep and never send a warmup, wedging the connection indefinitely.
++  const memAfterRead = inMemoryState.get(connectionId);
++  // Active window: refresh the marker every sweep from the DB, never from a
++  // frozen in-memory copy — that is what caused the job's counter to lag
++  // behind the dashboard by up to a full sweep interval on codex.
 +  if (Number.isFinite(resetAtMs) && resetAtMs > now) {
 +    patchState(connectionId, {
 +      knownSessionResetAt: resetAtMs,
@@ -1251,6 +1221,28 @@
 +    );
 +    return;
 +  }
++
++  // Just observed a transition from "active" (previous sweep recorded a future
++  // knownSessionResetAt) to "closed" (this sweep sees no future resetAt): arm
++  // the post-session snooze once, symmetrically for every provider.
++  if (
++    memAfterRead &&
++    memAfterRead.knownSessionResetAt > 0 &&
++    memAfterRead.sessionEndSnoozeUntil <= now
++  ) {
++    const jitter = sessionEndJitter();
++    const endsAt = new Date(memAfterRead.knownSessionResetAt).toISOString();
++    inMemoryState.set(connectionId, {
++      ...memAfterRead,
++      knownSessionResetAt: 0,
++      sessionEndSnoozeUntil: now + jitter,
++    });
++    console.log(
++      `${LOG_PREFIX} Session expired for ${tag} (resetAt ${endsAt}), snooze +${fmtDuration(jitter)} before warmup`
++    );
++    return;
++  }
++
 +  if (sessionResetAt) {
 +    console.log(
 +      `${LOG_PREFIX} Stale/expired resetAt for ${tag} (${sessionResetAt}), treating window as not started`
@@ -1324,23 +1316,26 @@
 +export default startSessionWarmupJob;
 --- a/open-sse/services/usage.ts
 +++ b/open-sse/services/usage.ts
-@@ -2195,11 +2195,24 @@
+@@ -2195,11 +2195,27 @@
      // Primary window (5-hour)
      if (Object.keys(primaryWindow).length > 0) {
        const usedPercent = toNumber(getFieldValue(primaryWindow, "used_percent", "usedPercent"), 0);
-+      // reset_at shows up only after the 5h window has actually been opened.
-+      // Before that Codex reports used_percent=0 plus a synthetic
-+      // reset_after_seconds equal to the full window length; synthesizing
-+      // now+5h from it renders a frozen "5h left" countdown on the dashboard
-+      // and makes the session-warmup job treat the fake window as active.
-+      // Surface null instead so "window not started" stays detectable.
++      // ChatGPT reports a synthetic "floating" reset_at for a 5h window that
++      // has never been opened: reset_after_seconds equals limit_window_seconds
++      // and both drift forward together on every poll. The warmup job would
++      // treat that as an active window and never fire. Detect it by comparing
++      // the two seconds fields directly instead of hard-coding 18000, so
++      // future changes to the window length on the ChatGPT side stay handled.
++      const limitWindowSeconds = toNumber(
++        getFieldValue(primaryWindow, "limit_window_seconds", "limitWindowSeconds"),
++        0
++      );
++      const resetAfterSeconds = toNumber(
++        getFieldValue(primaryWindow, "reset_after_seconds", "resetAfterSeconds"),
++        0
++      );
 +      const windowNotOpened =
-+        toNumber(getFieldValue(primaryWindow, "reset_at", "resetAt"), 0) <= 0 &&
-+        usedPercent <= 0 &&
-+        toNumber(
-+          getFieldValue(primaryWindow, "reset_after_seconds", "resetAfterSeconds"),
-+          0
-+        ) >= 5 * 60 * 60;
++        limitWindowSeconds > 0 && resetAfterSeconds >= limitWindowSeconds;
        quotas.session = {
          used: usedPercent,
          total: 100,
@@ -1350,3 +1345,37 @@
          unlimited: false,
        };
      }
+--- a/open-sse/services/codexQuotaFetcher.ts
++++ b/open-sse/services/codexQuotaFetcher.ts
+@@ -217,14 +217,27 @@
+ }
+
+ function parseWindowReset(window: Record<string, unknown>): string | null {
+-  const resetAt = toNumber(window["reset_at"] ?? window["resetAt"], 0);
+-  if (resetAt > 0) {
+-    return new Date(resetAt * 1000).toISOString();
+-  }
++  // Sentinel: ChatGPT synthesizes a floating reset_at for a never-opened 5h
++  // window. Both reset_after_seconds and limit_window_seconds equal the full
++  // window length and drift together with wall-clock time. Detect this by
++  // comparing the two seconds fields, mirroring open-sse/services/usage.ts —
++  // otherwise preflight and the warmup job see different session states.
++  const limitWindowSeconds = toNumber(
++    window["limit_window_seconds"] ?? window["limitWindowSeconds"],
++    0
++  );
+   const resetAfterSeconds = toNumber(
+     window["reset_after_seconds"] ?? window["resetAfterSeconds"],
+     0
+   );
++  if (limitWindowSeconds > 0 && resetAfterSeconds >= limitWindowSeconds) {
++    return null;
++  }
++
++  const resetAt = toNumber(window["reset_at"] ?? window["resetAt"], 0);
++  if (resetAt > 0) {
++    return new Date(resetAt * 1000).toISOString();
++  }
+   if (resetAfterSeconds > 0) {
+     return new Date(Date.now() + resetAfterSeconds * 1000).toISOString();
+   }
