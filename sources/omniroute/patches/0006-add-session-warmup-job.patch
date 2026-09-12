@@ -3,10 +3,10 @@
 @@ -6745,6 +6745,47 @@
    return providerId === "glm" || providerId === "glm-cn" || providerId === "glmt";
  }
- 
+
 +// Providers whose 5h session window the warmup job can open ahead of time.
 +function supportsSessionWarmup(providerId?: string | null) {
-+  return providerId === "claude" || isGlmProvider(providerId);
++  return providerId === "claude" || providerId === "codex" || isGlmProvider(providerId);
 +}
 +
 +interface SessionWarmupScheduleFormData {
@@ -188,10 +188,11 @@
          if (formData.validationModelId) {
            updates.providerSpecificData.validationModelId = formData.validationModelId;
          }
-@@ -9431,6 +9570,13 @@
-         };
+@@ -9432,6 +9571,15 @@
          if (isClaude) {
            updates.providerSpecificData.blockExtraUsage = formData.blockExtraUsage;
+         }
++        if (supportsSessionWarmup(connection.provider)) {
 +          updates.providerSpecificData.sessionWarmupEnabled = formData.sessionWarmupEnabled
 +            ? true
 +            : undefined;
@@ -199,13 +200,14 @@
 +            .enabled
 +            ? formData.sessionWarmupSchedule
 +            : undefined;
-         }
++        }
          if (isCodex) {
            updates.providerSpecificData.requestDefaults = {
-@@ -9739,6 +9885,77 @@
+             reasoningEffort: formData.codexReasoningEffort,
+@@ -9739,6 +9887,77 @@
            </>
          )}
- 
+
 +        {supportsSessionWarmup(connection.provider) && (
 +          <Toggle
 +            size="sm"
@@ -314,7 +316,7 @@
 +++ b/src/instrumentation-node.ts
 @@ -190,6 +190,15 @@
    }
- 
+
    try {
 +    const { startSessionWarmupJob } = await import("@/lib/sessionWarmupJob");
 +    startSessionWarmupJob();
@@ -330,7 +332,7 @@
      console.log("[COMPLIANCE] Audit log table initialized");
 --- /dev/null
 +++ b/src/lib/sessionWarmupJob.ts
-@@ -0,0 +1,786 @@
+@@ -0,0 +1,1007 @@
 +/**
 + * Session Warmup Job
 + *
@@ -340,6 +342,7 @@
 + *
 + * Supported providers:
 + *   - claude               (Anthropic OAuth, executor pipeline)
++ *   - codex               (OpenAI Codex OAuth, executor pipeline)
 + *   - glm / glm-cn / zai / glmt  (Z.AI / bigmodel.cn OpenAI-compatible)
 + *
 + * Quota data uses the SAME DB cache as /dashboard/niner-quota
@@ -347,6 +350,11 @@
 + * getProviderLimitsCache / fetchAndPersistProviderLimits.
 + *
 + * Toggle: per-connection `provider_specific_data.sessionWarmupEnabled: boolean`.
++ *
++ * Codex plans without a 5h window at all (codex go monthly-only tier,
++ * weekly-only tiers) never expose a "session" quota key; such connections
++ * are detected via the quota cache and skipped with a log line instead of
++ * being warmed pointlessly.
 + */
 +
 +import {
@@ -385,7 +393,13 @@
 +const CLAUDE_PROVIDER = "claude";
 +const CLAUDE_WARMUP_MODEL_FALLBACK = "claude-haiku-4-5-20251001";
 +
-+const ALL_TARGET_PROVIDERS = [CLAUDE_PROVIDER, ...GLM_PROVIDER_IDS];
++const CODEX_PROVIDER = "codex";
++// Cheapest Codex tier on the OAuth backend (registry entry ships with patch
++// 0008). A defaultModel picked on the connection wins over this fallback
++// (see getWarmupModel).
++const CODEX_WARMUP_MODEL_FALLBACK = "gpt-5.6-luna";
++
++const ALL_TARGET_PROVIDERS = [CLAUDE_PROVIDER, CODEX_PROVIDER, ...GLM_PROVIDER_IDS];
 +
 +const LOG_PREFIX = "[SessionWarmup]";
 +
@@ -524,6 +538,22 @@
 +
 +export function _resetSessionWarmupState(): void {
 +  inMemoryState.clear();
++}
++
++/**
++ * Test-only: pretend the connection already entered the current schedule
++ * window and its enter-snooze has fully elapsed, so the very next
++ * processConnection() call can proceed straight to the warmup decision.
++ * Mirrors how __setCodexWebSocketTransportForTesting gates test state.
++ */
++export function _primeScheduleWindowForTesting(
++  connectionId: string,
++  schedule: WarmupSchedule
++): void {
++  patchState(connectionId, {
++    lastScheduleWindowKey: currentWindowKey(schedule, new Date()),
++    scheduleEnterSnoozeUntil: 0,
++  });
 +}
 +
 +// ── Helpers ──────────────────────────────────────────────────────────────────
@@ -675,6 +705,10 @@
 +  return provider === CLAUDE_PROVIDER;
 +}
 +
++function isCodexProvider(provider: unknown): boolean {
++  return provider === CODEX_PROVIDER;
++}
++
 +// ── Quota reading/writing via providerLimitsCache (DB, same as NinerQuota) ───
 +
 +// 5h session window key differs per provider: claude uses "session (5h)",
@@ -705,6 +739,19 @@
 +  return extractSessionResetAt(dbCache.quotas);
 +}
 +
++/**
++ * True when the quota cache is filled but has no "session" key — i.e. a Codex
++ * plan without a 5h window at all (codex go monthly-only, weekly-only tiers).
++ * False when the cache is empty or the key is present, so callers fall through
++ * to the regular refresh/warmup path.
++ */
++function codexSessionWindowAbsent(connectionId: string): boolean {
++  const dbCache = getProviderLimitsCache(connectionId);
++  if (!dbCache) return false;
++  const quotas = asRecord(dbCache.quotas);
++  return Object.keys(quotas).length > 0 && !("session" in quotas);
++}
++
 +async function refreshCache(connectionId: string): Promise<string | null> {
 +  try {
 +    const result = await fetchAndPersistProviderLimits(connectionId, "manual");
@@ -713,17 +760,6 @@
 +  } catch {
 +    return null;
 +  }
-+}
-+
-+async function getSessionResetAt(connectionId: string): Promise<string | null> {
-+  // extractSessionResetAt re-checks `resetMs > Date.now()` on every read (not
-+  // just at cache-write time), so a non-null hit is already a future timestamp.
-+  // The caller still branches on `resetAtMs > now` only to separate an open
-+  // window from the null/refresh paths — not because this value could be stale.
-+  const cached = readResetAtFromCache(connectionId);
-+  if (cached !== null) return cached;
-+
-+  return refreshCache(connectionId);
 +}
 +
 +// ── Warmup request ───────────────────────────────────────────────────────────
@@ -739,9 +775,9 @@
 +  const provider = typeof conn.provider === "string" ? conn.provider : "";
 +  const model = typeof conn.defaultModel === "string" ? conn.defaultModel.trim() : "";
 +  if (model) return model;
-+  return isClaudeProvider(provider)
-+    ? CLAUDE_WARMUP_MODEL_FALLBACK
-+    : GLM_WARMUP_MODEL_FALLBACK;
++  if (isClaudeProvider(provider)) return CLAUDE_WARMUP_MODEL_FALLBACK;
++  if (isCodexProvider(provider)) return CODEX_WARMUP_MODEL_FALLBACK;
++  return GLM_WARMUP_MODEL_FALLBACK;
 +}
 +
 +/**
@@ -754,7 +790,19 @@
 +  try {
 +    const response = await send();
 +    const latencyMs = Date.now() - startedAt;
-+    if (response.ok) return { success: true, status: response.status, latencyMs };
++    if (response.ok) {
++      // Codex /responses is SSE-only: the executor forces stream=true upstream
++      // even when the caller asks for stream=false, so a 2xx carries an open
++      // event-stream body. Cancel it right away — the status already proves
++      // the request went through, and an unread body would pin the socket.
++      // Success only: on failure the snippet below reads response.text().
++      try {
++        await response.body?.cancel();
++      } catch {
++        // body already closed — nothing to do
++      }
++      return { success: true, status: response.status, latencyMs };
++    }
 +    let snippet = "";
 +    try {
 +      snippet = (await response.text()).slice(0, 240);
@@ -779,10 +827,59 @@
 +  if (isClaudeProvider(provider)) {
 +    return sendClaudeWarmupRequest(conn);
 +  }
++  if (isCodexProvider(provider)) {
++    return sendCodexWarmupRequest(conn);
++  }
 +  if (isGlmProvider(provider)) {
 +    return sendGlmWarmupRequest(conn);
 +  }
 +  return { success: false, latencyMs: 0, snippet: `unsupported provider: ${provider}` };
++}
++
++/**
++ * Persists an OAuth token proactively refreshed by BaseExecutor.execute()
++ * back to the DB, so rotating refresh tokens are not burned without being
++ * saved. Handles both refresh result shapes seen across executors/tokenRefresh.ts:
++ * a relative `expiresIn` (seconds, e.g. Claude/Codex OAuth refresh) and an
++ * absolute `expiresAt` (ISO string). Mirrors the conversion already used in
++ * src/lib/usage/providerLimits.ts and src/sse/services/tokenRefresh.ts so all
++ * three call sites agree on how a token's expiry ends up in the DB.
++ */
++async function persistRefreshedCredentials(
++  providerTag: string,
++  connectionId: string | undefined,
++  refreshed: Record<string, unknown>
++): Promise<void> {
++  if (!connectionId) return;
++  const updates: Record<string, unknown> = {};
++  if (typeof refreshed.accessToken === "string") {
++    updates.accessToken = refreshed.accessToken;
++  }
++  if (typeof refreshed.refreshToken === "string") {
++    updates.refreshToken = refreshed.refreshToken;
++  }
++  const expiresIn =
++    typeof refreshed.expiresIn === "number" && Number.isFinite(refreshed.expiresIn)
++      ? refreshed.expiresIn
++      : null;
++  if (expiresIn) {
++    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
++    updates.expiresAt = expiresAt;
++    updates.tokenExpiresAt = expiresAt;
++  } else if (typeof refreshed.expiresAt === "string") {
++    updates.expiresAt = refreshed.expiresAt;
++    updates.tokenExpiresAt = refreshed.expiresAt;
++  }
++  if (Object.keys(updates).length > 0) {
++    try {
++      await updateProviderConnection(connectionId, updates);
++    } catch (err) {
++      console.warn(
++        `${LOG_PREFIX} Failed to persist refreshed ${providerTag} token (${connectionId}):`,
++        err instanceof Error ? err.message : String(err)
++      );
++    }
++  }
 +}
 +
 +async function sendClaudeWarmupRequest(
@@ -798,6 +895,19 @@
 +    typeof psd.validationModelId === "string"
 +      ? psd.validationModelId
 +      : getWarmupModel(conn);
++  const refreshToken =
++    typeof conn.refreshToken === "string" ? conn.refreshToken : undefined;
++  // Without expiresAt, BaseExecutor.needsRefresh() always returns false (it
++  // only compares against credentials.expiresAt) — the proactive refresh
++  // never fires and warmup silently skips it, unlike the normal chatCore.ts
++  // request path which always carries this field.
++  const expiresAt =
++    typeof conn.tokenExpiresAt === "string"
++      ? conn.tokenExpiresAt
++      : typeof conn.expiresAt === "string"
++        ? conn.expiresAt
++        : undefined;
++  const connectionId = typeof conn.id === "string" ? conn.id : undefined;
 +
 +  return runWarmup(async () => {
 +    const { response } = await getExecutor("claude").execute({
@@ -808,7 +918,87 @@
 +        messages: [{ role: "user", content: "test" }],
 +      },
 +      stream: false,
-+      credentials: { accessToken, providerSpecificData: psd },
++      credentials: { accessToken, refreshToken, expiresAt, connectionId, providerSpecificData: psd },
++      onCredentialsRefreshed: async (refreshed) => {
++        // BaseExecutor may proactively refresh Claude OAuth tokens; persist
++        // them back to the DB so rotating refresh tokens are not burned
++        // without being saved.
++        await persistRefreshedCredentials(
++          "claude",
++          connectionId,
++          refreshed as unknown as Record<string, unknown>
++        );
++      },
++    });
++    return response as unknown as Response;
++  });
++}
++
++async function sendCodexWarmupRequest(
++  conn: Record<string, unknown>
++): Promise<WarmupOutcome> {
++  const accessToken = typeof conn.accessToken === "string" ? conn.accessToken : "";
++  if (!accessToken) {
++    return { success: false, latencyMs: 0, snippet: "missing access_token on connection" };
++  }
++
++  const psd = asRecord(conn.providerSpecificData);
++  // getCodexUsage reads workspaceId with NO_FALLBACK (usage.ts), so a warmup
++  // without it would hit a different workspace than the one the quota is
++  // read from — the job would loop forever thinking the window is closed.
++  const workspaceId = typeof psd.workspaceId === "string" ? psd.workspaceId : "";
++  if (!workspaceId) {
++    return { success: false, latencyMs: 0, snippet: "missing workspaceId" };
++  }
++
++  const testModelId =
++    typeof psd.validationModelId === "string"
++      ? psd.validationModelId
++      : getWarmupModel(conn);
++  const probe = pickRandomProbe();
++  const refreshToken =
++    typeof conn.refreshToken === "string" ? conn.refreshToken : undefined;
++  const expiresAt =
++    typeof conn.tokenExpiresAt === "string"
++      ? conn.tokenExpiresAt
++      : typeof conn.expiresAt === "string"
++        ? conn.expiresAt
++        : undefined;
++  const connectionId = typeof conn.id === "string" ? conn.id : undefined;
++
++  return runWarmup(async () => {
++    const { response } = await getExecutor(CODEX_PROVIDER).execute({
++      model: testModelId,
++      // Native Responses API shape; no max_tokens/max_output_tokens — the
++      // codex executor strips both from the body before sending anyway.
++      body: {
++        model: testModelId,
++        input: [
++          {
++            type: "message",
++            role: "user",
++            content: [{ type: "input_text", text: probe.content }],
++          },
++        ],
++      },
++      stream: false,
++      credentials: {
++        accessToken,
++        refreshToken,
++        expiresAt,
++        connectionId,
++        providerSpecificData: psd,
++      },
++      onCredentialsRefreshed: async (refreshed) => {
++        // BaseExecutor may proactively refresh Codex OAuth tokens; persist
++        // them back to the DB so rotating refresh tokens are not burned
++        // without being saved.
++        await persistRefreshedCredentials(
++          "codex",
++          connectionId,
++          refreshed as unknown as Record<string, unknown>
++        );
++      },
 +    });
 +    return response as unknown as Response;
 +  });
@@ -963,35 +1153,6 @@
 +    return;
 +  }
 +
-+  // While the session window is still open, skip without re-reading the cache.
-+  // knownSessionResetAt holds the REAL window end (no jitter), so this branch is
-+  // provider-agnostic — it no longer depends on the per-provider cache key that
-+  // disappears once the window closes (the bug that made claude skip the snooze).
-+  if (mem && mem.knownSessionResetAt > now) {
-+    const left = fmtDuration(mem.knownSessionResetAt - now);
-+    const endsAt = new Date(mem.knownSessionResetAt).toISOString();
-+    console.log(
-+      `${LOG_PREFIX} Skipping ${tag} (session active, ends ${endsAt}, ${left} left)`
-+    );
-+    return;
-+  }
-+
-+  // Window just closed: arm the post-session snooze once, uniformly for every
-+  // provider, instead of immediately firing a warmup.
-+  if (mem && mem.knownSessionResetAt > 0 && mem.sessionEndSnoozeUntil <= now) {
-+    const jitter = sessionEndJitter();
-+    const endsAt = new Date(mem.knownSessionResetAt).toISOString();
-+    inMemoryState.set(connectionId, {
-+      ...mem,
-+      knownSessionResetAt: 0,
-+      sessionEndSnoozeUntil: now + jitter,
-+    });
-+    console.log(
-+      `${LOG_PREFIX} Session expired for ${tag} (resetAt ${endsAt}), snooze +${fmtDuration(jitter)} before warmup`
-+    );
-+    return;
-+  }
-+
 +  if (mem && mem.sessionEndSnoozeUntil > now) {
 +    const left = fmtDuration(mem.sessionEndSnoozeUntil - now);
 +    console.log(
@@ -1027,25 +1188,45 @@
 +    return;
 +  }
 +
-+  let sessionResetAt: string | null = null;
-+  try {
-+    sessionResetAt = await getSessionResetAt(connectionId);
-+  } catch (err) {
-+    patchState(connectionId, {
-+      fetchCooldownUntil: Date.now() + FETCH_FAILURE_BACKOFF_MS,
-+    });
-+    console.warn(
-+      `${LOG_PREFIX} ! ${tag} quota read threw, cooldown ${FETCH_FAILURE_BACKOFF_MS / 1000}s`,
-+      err instanceof Error ? err.message : String(err)
++  // Codex plans without any 5h window never expose a "session" quota key, so
++  // there is nothing to warm. Checked BEFORE the quota refresh below: with a
++  // filled cache this skips without a single network call, on every sweep.
++  if (isCodexProvider(conn.provider) && codexSessionWindowAbsent(connectionId)) {
++    console.log(
++      `${LOG_PREFIX} Skipping ${tag} (plan has no 5h session window, nothing to warm up)`
 +    );
 +    return;
 +  }
 +
++  // Read the DB cache exactly once and branch explicitly on the three states,
++  // instead of collapsing "no entry" and "entry with resetAt=null" into a single
++  // null via readResetAtFromCache. Only a truly cold cache warrants a forced
++  // refreshCache — a filled cache with resetAt=null already carries the "window
++  // is closed" signal from usage.ts and must not trigger a per-sweep API call.
++  let sessionResetAt: string | null = null;
++  const dbCache = getProviderLimitsCache(connectionId);
++  if (!dbCache) {
++    try {
++      sessionResetAt = await refreshCache(connectionId);
++    } catch (err) {
++      patchState(connectionId, {
++        fetchCooldownUntil: Date.now() + FETCH_FAILURE_BACKOFF_MS,
++      });
++      console.warn(
++        `${LOG_PREFIX} ! ${tag} quota read threw, cooldown ${FETCH_FAILURE_BACKOFF_MS / 1000}s`,
++        err instanceof Error ? err.message : String(err)
++      );
++      return;
++    }
++  } else {
++    sessionResetAt = readResetAtFromCache(connectionId);
++  }
++
 +  const resetAtMs = sessionResetAt ? Date.parse(sessionResetAt) : NaN;
-+  // Only a resetAt strictly in the future means the 5h window is open. A past or
-+  // unparseable value (e.g. stale quotas returned after a fail-closed proxy abort)
-+  // must NOT count as "session active" — otherwise the job would return here every
-+  // sweep and never send a warmup, wedging the connection indefinitely.
++  const memAfterRead = inMemoryState.get(connectionId);
++  // Active window: refresh the marker every sweep from the DB, never from a
++  // frozen in-memory copy — that is what caused the job's counter to lag
++  // behind the dashboard by up to a full sweep interval on codex.
 +  if (Number.isFinite(resetAtMs) && resetAtMs > now) {
 +    patchState(connectionId, {
 +      knownSessionResetAt: resetAtMs,
@@ -1056,10 +1237,42 @@
 +    );
 +    return;
 +  }
++
++  // Just observed a transition from "active" (previous sweep recorded a future
++  // knownSessionResetAt) to "closed" (this sweep sees no future resetAt): arm
++  // the post-session snooze once, symmetrically for every provider.
++  if (
++    memAfterRead &&
++    memAfterRead.knownSessionResetAt > 0 &&
++    memAfterRead.sessionEndSnoozeUntil <= now
++  ) {
++    const jitter = sessionEndJitter();
++    const endsAt = new Date(memAfterRead.knownSessionResetAt).toISOString();
++    inMemoryState.set(connectionId, {
++      ...memAfterRead,
++      knownSessionResetAt: 0,
++      sessionEndSnoozeUntil: now + jitter,
++    });
++    console.log(
++      `${LOG_PREFIX} Session expired for ${tag} (resetAt ${endsAt}), snooze +${fmtDuration(jitter)} before warmup`
++    );
++    return;
++  }
++
 +  if (sessionResetAt) {
 +    console.log(
 +      `${LOG_PREFIX} Stale/expired resetAt for ${tag} (${sessionResetAt}), treating window as not started`
 +    );
++  }
++
++  // Re-check after the refresh getSessionResetAt may have performed: the first
++  // sweep on an empty cache fills it here, so even that first sweep does not
++  // burn a pointless warmup request on a plan without a 5h window.
++  if (isCodexProvider(conn.provider) && codexSessionWindowAbsent(connectionId)) {
++    console.log(
++      `${LOG_PREFIX} Skipping ${tag} (plan has no 5h session window, nothing to warm up)`
++    );
++    return;
 +  }
 +
 +  console.log(
@@ -1084,16 +1297,26 @@
 +    const newResetAt = await refreshCache(connectionId);
 +    let sessionInfo = "";
 +    const newMs = newResetAt ? Date.parse(newResetAt) : NaN;
++    // Keep the schedule-window memory across the post-warmup reset: wiping it
++    // made the next sweep treat the same schedule window as freshly entered,
++    // re-arming the enter-snooze (3-15m of pointless delay + a misleading
++    // "Schedule window opened" log line right after every warmup).
++    const preservedWindowKey =
++      inMemoryState.get(connectionId)?.lastScheduleWindowKey ?? "";
 +    if (Number.isFinite(newMs) && newMs > Date.now()) {
 +      // Store the real window end; the post-session snooze jitter is applied
 +      // later, when the window actually closes, uniformly for all providers.
 +      inMemoryState.set(connectionId, {
 +        ...emptyState(),
++        lastScheduleWindowKey: preservedWindowKey,
 +        knownSessionResetAt: newMs,
 +      });
 +      sessionInfo = `, session ends ${newResetAt}`;
 +    } else {
-+      inMemoryState.delete(connectionId);
++      inMemoryState.set(connectionId, {
++        ...emptyState(),
++        lastScheduleWindowKey: preservedWindowKey,
++      });
 +    }
 +    console.log(
 +      `${LOG_PREFIX} ✓ ${tag} warmup OK (${outcome.latencyMs}ms${sessionInfo})`
@@ -1117,3 +1340,507 @@
 +}
 +
 +export default startSessionWarmupJob;
+--- a/open-sse/services/usage.ts
++++ b/open-sse/services/usage.ts
+@@ -2195,11 +2195,27 @@
+     // Primary window (5-hour)
+     if (Object.keys(primaryWindow).length > 0) {
+       const usedPercent = toNumber(getFieldValue(primaryWindow, "used_percent", "usedPercent"), 0);
++      // ChatGPT reports a synthetic "floating" reset_at for a 5h window that
++      // has never been opened: reset_after_seconds equals limit_window_seconds
++      // and both drift forward together on every poll. The warmup job would
++      // treat that as an active window and never fire. Detect it by comparing
++      // the two seconds fields directly instead of hard-coding 18000, so
++      // future changes to the window length on the ChatGPT side stay handled.
++      const limitWindowSeconds = toNumber(
++        getFieldValue(primaryWindow, "limit_window_seconds", "limitWindowSeconds"),
++        0
++      );
++      const resetAfterSeconds = toNumber(
++        getFieldValue(primaryWindow, "reset_after_seconds", "resetAfterSeconds"),
++        0
++      );
++      const windowNotOpened =
++        limitWindowSeconds > 0 && resetAfterSeconds >= limitWindowSeconds;
+       quotas.session = {
+         used: usedPercent,
+         total: 100,
+         remaining: 100 - usedPercent,
+-        resetAt: parseWindowReset(primaryWindow),
++        resetAt: windowNotOpened ? null : parseWindowReset(primaryWindow),
+         unlimited: false,
+       };
+     }
+--- a/open-sse/services/codexQuotaFetcher.ts
++++ b/open-sse/services/codexQuotaFetcher.ts
+@@ -217,14 +217,27 @@
+ }
+
+ function parseWindowReset(window: Record<string, unknown>): string | null {
+-  const resetAt = toNumber(window["reset_at"] ?? window["resetAt"], 0);
+-  if (resetAt > 0) {
+-    return new Date(resetAt * 1000).toISOString();
+-  }
++  // Sentinel: ChatGPT synthesizes a floating reset_at for a never-opened 5h
++  // window. Both reset_after_seconds and limit_window_seconds equal the full
++  // window length and drift together with wall-clock time. Detect this by
++  // comparing the two seconds fields, mirroring open-sse/services/usage.ts —
++  // otherwise preflight and the warmup job see different session states.
++  const limitWindowSeconds = toNumber(
++    window["limit_window_seconds"] ?? window["limitWindowSeconds"],
++    0
++  );
+   const resetAfterSeconds = toNumber(
+     window["reset_after_seconds"] ?? window["resetAfterSeconds"],
+     0
+   );
++  if (limitWindowSeconds > 0 && resetAfterSeconds >= limitWindowSeconds) {
++    return null;
++  }
++
++  const resetAt = toNumber(window["reset_at"] ?? window["resetAt"], 0);
++  if (resetAt > 0) {
++    return new Date(resetAt * 1000).toISOString();
++  }
+   if (resetAfterSeconds > 0) {
+     return new Date(Date.now() + resetAfterSeconds * 1000).toISOString();
+   }
+--- /dev/null
++++ b/tests/unit/session-warmup-job.test.ts
+@@ -0,0 +1,436 @@
++// Unit tests for the session warmup job (patch 0006).
++//
++// Runs against the REAL DB layer (temp DATA_DIR), the REAL codex executor
++// pipeline and a stubbed globalThis.fetch that routes by URL:
++//   - https://chatgpt.com/backend-api/wham/usage      -> quota JSON
++//   - https://chatgpt.com/backend-api/codex/responses -> SSE 200 / failures
++//
++// Mirrors the conventions of db-provider-limits.test.ts (temp DATA_DIR set
++// before any module import) and codex-quota-fetcher.test.ts (globalThis.fetch
++// stubbing). Every test MUST fail if the corresponding job behavior breaks.
++
++import test from "node:test";
++import assert from "node:assert/strict";
++import fs from "node:fs";
++import os from "node:os";
++import path from "node:path";
++
++const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omni-session-warmup-"));
++process.env.DATA_DIR = TEST_DATA_DIR;
++process.env.DISABLE_SQLITE_AUTO_BACKUP = "true";
++
++interface RoutedCall {
++  url: string;
++  init?: RequestInit;
++}
++
++const calls: RoutedCall[] = [];
++let usagePayload: () => Record<string, unknown> = () => ({});
++let responsesHandler: (init?: RequestInit) => Response = () => sseResponse();
++
++function sseResponse(): Response {
++  return new Response(
++    'data: {"type":"response.completed"}\n\ndata: [DONE]\n\n',
++    { status: 200, headers: { "content-type": "text/event-stream" } }
++  );
++}
++
++function usageWithSession(resetAtSec: number): Record<string, unknown> {
++  return {
++    rate_limit: {
++      allowed: true,
++      limit_reached: false,
++      primary_window: {
++        used_percent: 1,
++        limit_window_seconds: 18000,
++        reset_after_seconds: Math.max(60, resetAtSec - Math.floor(Date.now() / 1000)),
++        reset_at: resetAtSec,
++      },
++      secondary_window: {
++        used_percent: 10,
++        limit_window_seconds: 604800,
++        reset_after_seconds: 500000,
++        reset_at: Math.floor(Date.now() / 1000) + 500000,
++      },
++    },
++  };
++}
++
++function floatingWindowPayload(): Record<string, unknown> {
++  // ChatGPT's synthetic payload for a 5h window that has never been opened:
++  // reset_after_seconds equals limit_window_seconds and reset_at drifts with
++  // wall-clock time (captured in the wild, see patch 0006 usage.ts comment).
++  return {
++    rate_limit: {
++      allowed: true,
++      limit_reached: false,
++      primary_window: {
++        used_percent: 0,
++        limit_window_seconds: 18000,
++        reset_after_seconds: 18000,
++        reset_at: Math.floor(Date.now() / 1000) + 18000,
++      },
++      secondary_window: {
++        used_percent: 46,
++        limit_window_seconds: 604800,
++        reset_after_seconds: 311156,
++        reset_at: Math.floor(Date.now() / 1000) + 311156,
++      },
++    },
++  };
++}
++
++const originalFetch = globalThis.fetch;
++
++const logLines: string[] = [];
++const warnLines: string[] = [];
++const errorLines: string[] = [];
++const originalLog = console.log;
++const originalWarn = console.warn;
++const originalError = console.error;
++
++const localDb = await import("../../src/lib/localDb.ts");
++const providerLimitsDb = await import("../../src/lib/db/providerLimits.ts");
++const warmup = await import("../../src/lib/sessionWarmupJob.ts");
++
++// sessionWarmupJob imports @omniroute/open-sse/utils/proxyFetch.ts, whose
++// module side effect REPLACES globalThis.fetch with an undici-backed
++// patchedFetch. Installing the stub after all imports makes sure the routing
++// below is the fetch every code path (quota fetch + executor) ends up calling.
++globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
++  const url = typeof input === "string" ? input : input.toString();
++  calls.push({ url, init });
++  if (url.includes("/backend-api/wham/usage")) {
++    return new Response(JSON.stringify(usagePayload()), {
++      status: 200,
++      headers: { "content-type": "application/json" },
++    });
++  }
++  if (url.includes("/backend-api/codex/responses")) {
++    return responsesHandler(init);
++  }
++  return new Response("{}", { status: 200 });
++}) as typeof fetch;
++
++async function resetStorage() {
++  const coreDb = await import("../../src/lib/db/core.ts");
++  coreDb.resetDbInstance();
++  fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
++  fs.mkdirSync(TEST_DATA_DIR, { recursive: true });
++}
++
++let connectionSeq = 0;
++
++async function createCodexConnection(
++  providerSpecificData: Record<string, unknown>
++): Promise<string> {
++  connectionSeq += 1;
++  const created = await localDb.createProviderConnection({
++    provider: "codex",
++    name: `codex-test-${connectionSeq}`,
++    authType: "oauth",
++    email: `test-${connectionSeq}@example.com`,
++    accessToken: "warmup-access-token",
++    refreshToken: "warmup-refresh-token",
++    tokenExpiresAt: new Date(Date.now() + 3600_000).toISOString(),
++    isActive: true,
++    providerSpecificData,
++  });
++  assert.ok(created?.id, "connection must be created");
++  return created.id as string;
++}
++
++function scheduleAlwaysOn(): Record<string, unknown> {
++  return {
++    enabled: true,
++    fromUtc: "00:00",
++    untilUtc: "23:59",
++  };
++}
++
++function scheduleNeverNow(): Record<string, unknown> {
++  // A window that is guaranteed to be in the future right now: starts two
++  // hours from the current UTC time-of-day, runs one hour.
++  const nowMin = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
++  const fmt = (min: number) =>
++    `${String(Math.floor((min % 1440) / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
++  return {
++    enabled: true,
++    fromUtc: fmt(nowMin + 120),
++    untilUtc: fmt(nowMin + 180),
++  };
++}
++
++async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<void> {
++  const deadline = Date.now() + timeoutMs;
++  while (Date.now() < deadline) {
++    if (predicate()) return;
++    await new Promise((resolve) => setTimeout(resolve, 25));
++  }
++}
++
++test.beforeEach(async () => {
++  await resetStorage();
++  warmup._resetSessionWarmupState();
++  calls.length = 0;
++  logLines.length = 0;
++  warnLines.length = 0;
++  errorLines.length = 0;
++  usagePayload = () => ({});
++  responsesHandler = () => sseResponse();
++  console.log = (...args: unknown[]) => {
++    const line = args.map(String).join(" ");
++    logLines.push(line);
++  };
++  console.warn = (...args: unknown[]) => {
++    warnLines.push(args.map(String).join(" "));
++  };
++  console.error = (...args: unknown[]) => {
++    errorLines.push(args.map(String).join(" "));
++  };
++});
++
++// The DB layer (migrations, WAL checkpoints) also writes to console.log, so
++// warmup assertions must filter by the job's own prefix.
++function warmupLogs(): string[] {
++  return logLines.filter((line) => line.includes("[SessionWarmup]"));
++}
++
++test.afterEach(() => {
++  console.log = originalLog;
++  console.warn = originalWarn;
++  console.error = originalError;
++});
++
++test.after(() => {
++  globalThis.fetch = originalFetch;
++});
++
++test("warmup disabled connections are ignored without any network traffic", async () => {
++  const id = await createCodexConnection({ workspaceId: "ws-plain" });
++  await warmup.processConnection(
++    (await localDb.getProviderConnectionById(id)) as unknown as Record<string, unknown>
++  );
++  assert.equal(calls.length, 0);
++  assert.equal(warmupLogs().length, 0);
++});
++
++test("out-of-schedule warmup is skipped and logged every sweep", async () => {
++  const id = await createCodexConnection({
++    workspaceId: "ws-sched",
++    sessionWarmupEnabled: true,
++    sessionWarmupSchedule: scheduleNeverNow(),
++  });
++  const conn = (await localDb.getProviderConnectionById(id)) as unknown as Record<
++    string,
++    unknown
++  >;
++  await warmup.processConnection(conn);
++  await warmup.processConnection(conn);
++  assert.equal(calls.length, 0, "no network calls may happen outside the window");
++  assert.equal(
++    warmupLogs().filter((line) => line.includes("out of schedule")).length,
++    2,
++    "skip must be logged on every sweep"
++  );
++});
++
++test("first sweep inside a schedule window arms the enter-snooze", async () => {
++  const id = await createCodexConnection({
++    workspaceId: "ws-enter",
++    sessionWarmupEnabled: true,
++    sessionWarmupSchedule: scheduleAlwaysOn(),
++  });
++  const conn = (await localDb.getProviderConnectionById(id)) as unknown as Record<
++    string,
++    unknown
++  >;
++  await warmup.processConnection(conn);
++  assert.equal(calls.length, 0, "no warmup may fire while the enter-snooze runs");
++  assert.ok(
++    warmupLogs().some((line) => line.includes("Schedule window opened for codex/")),
++    "window entry must be logged exactly here"
++  );
++});
++
++test("warmup fires once the enter-snooze is primed away, then the schedule memory survives the success reset", async () => {
++  const id = await createCodexConnection({
++    workspaceId: "ws-prime",
++    sessionWarmupEnabled: true,
++    sessionWarmupSchedule: scheduleAlwaysOn(),
++  });
++  const conn = (await localDb.getProviderConnectionById(id)) as unknown as Record<
++    string,
++    unknown
++  >;
++  const schedule = {
++    enabled: true,
++    fromUtc: "00:00",
++    untilUtc: "23:59",
++  };
++  warmup._primeScheduleWindowForTesting(id, schedule);
++
++  // Before the warmup: never-opened floating window. Once the warmup POST
++  // lands, the quota endpoint starts reporting a freshly opened session.
++  usagePayload = () => floatingWindowPayload();
++  responsesHandler = () => {
++    usagePayload = () =>
++      usageWithSession(Math.floor(Date.now() / 1000) + 3600);
++    return sseResponse();
++  };
++  await warmup.processConnection(conn);
++
++  const responsesCalls = calls.filter((c) => c.url.includes("/codex/responses"));
++  assert.equal(responsesCalls.length, 1, "exactly one warmup request must be sent");
++  assert.ok(
++    warmupLogs().some((line) => line.includes("Sending warmup to codex/")),
++    "warmup dispatch must be logged"
++  );
++  assert.ok(
++    warmupLogs().some((line) => line.includes("warmup OK") && line.includes("session ends")),
++    "success must report the refreshed session end"
++  );
++
++  // Second sweep: the schedule window memory must survive the success reset,
++  // so the job must NOT re-arm the enter-snooze nor fire another warmup.
++  await warmup.processConnection(conn);
++  assert.equal(
++    warmupLogs().filter((line) => line.includes("Schedule window opened")).length,
++    0,
++    "a successful warmup must not re-arm the schedule enter-snooze"
++  );
++  assert.equal(calls.filter((c) => c.url.includes("/codex/responses")).length, 1);
++  assert.ok(
++    warmupLogs().some((line) => line.includes("session active")),
++    "second sweep must observe the active session"
++  );
++});
++
++test("plan without a 5h session window is skipped without any warmup call", async () => {
++  const id = await createCodexConnection({
++    workspaceId: "ws-nowindow",
++    sessionWarmupEnabled: true,
++  });
++  providerLimitsDb.setProviderLimitsCache(id, {
++    quotas: { weekly: { used: 1, total: 100, remaining: 99, resetAt: null, unlimited: false } },
++    plan: null,
++    message: null,
++    fetchedAt: new Date().toISOString(),
++    source: "sync",
++  });
++  const conn = (await localDb.getProviderConnectionById(id)) as unknown as Record<
++    string,
++    unknown
++  >;
++  await warmup.processConnection(conn);
++  assert.equal(calls.length, 0, "no quota fetch and no warmup may happen");
++  assert.ok(
++    warmupLogs().some((line) => line.includes("plan has no 5h session window")),
++    "skip reason must be logged"
++  );
++});
++
++test("active session in the cache is skipped without warmup", async () => {
++  const id = await createCodexConnection({
++    workspaceId: "ws-active",
++    sessionWarmupEnabled: true,
++  });
++  const resetAt = new Date(Date.now() + 45 * 60_000).toISOString();
++  providerLimitsDb.setProviderLimitsCache(id, {
++    quotas: {
++      session: { used: 1, total: 100, remaining: 99, resetAt, unlimited: false },
++    },
++    plan: null,
++    message: null,
++    fetchedAt: new Date().toISOString(),
++    source: "sync",
++  });
++  const conn = (await localDb.getProviderConnectionById(id)) as unknown as Record<
++    string,
++    unknown
++  >;
++  await warmup.processConnection(conn);
++  assert.equal(
++    calls.filter((c) => c.url.includes("/codex/responses")).length,
++    0,
++    "no warmup request may be sent while the session is active"
++  );
++  assert.ok(warmupLogs().some((line) => line.includes("session active")));
++});
++
++test("failed warmup lands in backoff instead of a retry loop", async () => {
++  const id = await createCodexConnection({
++    workspaceId: "ws-fail",
++    sessionWarmupEnabled: true,
++  });
++  responsesHandler = () => new Response("upstream exploded", { status: 500 });
++  const conn = (await localDb.getProviderConnectionById(id)) as unknown as Record<
++    string,
++    unknown
++  >;
++  await warmup.processConnection(conn);
++  assert.ok(
++    errorLines.filter((line) => line.includes("[SessionWarmup]")).some((line) => line.includes("warmup failed") && line.includes("status=500")),
++    "failure must be logged with the status"
++  );
++  await warmup.processConnection(conn);
++  assert.ok(
++    warmupLogs().some((line) => line.includes("warmup backoff")),
++    "second sweep must be held off by backoff"
++  );
++  assert.equal(calls.filter((c) => c.url.includes("/codex/responses")).length, 1);
++});
++
++test("a never-opened session is detected via reset_after_seconds and triggers warmup", async () => {
++  const id = await createCodexConnection({
++    workspaceId: "ws-floating",
++    sessionWarmupEnabled: true,
++  });
++  // Cold cache: the first sweep refreshes quotas. ChatGPT's "floating"
++  // payload (reset_after == limit_window) must read as "not started".
++  usagePayload = () => floatingWindowPayload();
++  const conn = (await localDb.getProviderConnectionById(id)) as unknown as Record<
++    string,
++    unknown
++  >;
++  await warmup.processConnection(conn);
++  assert.ok(
++    warmupLogs().some((line) => line.includes("Sending warmup to codex/")),
++    "floating window must be treated as not started and warmed up"
++  );
++  assert.equal(calls.filter((c) => c.url.includes("/codex/responses")).length, 1);
++});
++
++test("TTL guard suppresses repeat warmups within an hour of the last one", async () => {
++  const id = await createCodexConnection({
++    workspaceId: "ws-ttl",
++    sessionWarmupEnabled: true,
++  });
++  const resetAt = new Date(Date.now() + 30 * 60_000).toISOString();
++  providerLimitsDb.setProviderLimitsCache(id, {
++    quotas: {
++      session: { used: 1, total: 100, remaining: 99, resetAt, unlimited: false },
++    },
++    plan: null,
++    message: null,
++    fetchedAt: new Date().toISOString(),
++    source: "sync",
++  });
++  await localDb.updateProviderConnection(id, {
++    providerSpecificData: {
++      workspaceId: "ws-ttl",
++      sessionWarmupEnabled: true,
++      lastSessionWarmupAt: new Date(Date.now() - 10 * 60_000).toISOString(),
++    },
++  });
++  const conn = (await localDb.getProviderConnectionById(id)) as unknown as Record<
++    string,
++    unknown
++  >;
++  await warmup.processConnection(conn);
++  assert.equal(calls.length, 0);
++  assert.ok(
++    warmupLogs().some((line) => line.includes("warmup TTL") && line.includes("session ends")),
++    "TTL skip must surface the cached session state"
++  );
++});

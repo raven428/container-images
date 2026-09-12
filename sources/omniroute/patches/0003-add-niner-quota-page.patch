@@ -489,7 +489,7 @@ new file mode 100644
 index 00000000..e4a8ff1d
 --- /dev/null
 +++ b/src/app/(dashboard)/dashboard/usage/components/NinerQuota/index.tsx
-@@ -0,0 +1,504 @@
+@@ -0,0 +1,502 @@
 +"use client";
 +
 +import { useState, useEffect, useCallback, useRef } from "react";
@@ -949,12 +949,10 @@ index 00000000..e4a8ff1d
 +                      <ProviderIcon providerId={conn.provider} size={32} type="color" className="object-contain" />
 +                    </div>
 +                    <div className="min-w-0">
-+                      <h3 className="text-sm font-semibold text-text-primary capitalize truncate">{conn.provider}</h3>
-+                      {(() => {
-+                        const isEmail = (v) => typeof v === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-+                        const label = isEmail(conn.email) ? conn.email : (isEmail(conn.name) ? conn.name : conn.name);
-+                        return label ? <p className="text-xs text-text-muted truncate">{label}</p> : null;
-+                      })()}
++                      <h3 className="text-sm font-semibold text-text-primary truncate">
++                        {conn.name || conn.provider}
++                      </h3>
++                      <p className="text-xs text-text-muted capitalize truncate">{conn.provider}</p>
 +                    </div>
 +                  </div>
 +
