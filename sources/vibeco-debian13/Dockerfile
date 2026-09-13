@@ -6,6 +6,5 @@ ENV LC_TIME='en_GB.UTF-8'
 ENV LANGUAGE='en_US.UTF-8'
 COPY _shared /files/shared
 RUN /files/shared/install/coder.sh
-RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.84.4
 USER coder
 VOLUME ["/srv/data/podman/main", "/home/coder"]
