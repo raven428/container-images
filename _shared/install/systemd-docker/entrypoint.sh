@@ -7,6 +7,9 @@
 set -uo pipefail
 
 (
+  # With an allocated tty systemd takes over the terminal and SIGHUPs this reader.
+  # An ignored disposition survives the exec below, unlike a handler.
+  trap '' HUP
   socket='/run/systemd/journal/socket'
   until [[ -S "${socket}" ]]; do
     sleep 0.05
@@ -16,7 +19,7 @@ set -uo pipefail
   until journalctl -n 1 --no-pager -q 2>/dev/null | grep -q .; do
     sleep 0.05
   done
-  exec journalctl -f -o short-monotonic --no-pager 2>/dev/null
+  exec journalctl -f -n all -o short-monotonic --no-pager 2>/dev/null
 ) &
 
 exec /lib/systemd/systemd
