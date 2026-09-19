@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-: "${REGI:="ghcr.io/raven428/container-images"}"
+: "${REGI:="ghcr.io/raven428"}"
 : "${NSPAWN:="${REGI}/victim-ubuntu-22_04:latest"}"
 : "${NSP_NAME:="nsp4ans"}"
 : "${DEST_DIR:="/tmp/${NSP_NAME}"}"

@@ -7,7 +7,7 @@ set -ueo pipefail
 : "${PROM_RULES_DIR:="ansible/files/prometheus"}"
 : "${USE_GITIGNORE:=""}"
 : "${USE_LINTIGNORE:=""}"
-: "${IMAGE_NAME:="ghcr.io/raven428/container-images/linters-ubuntu-22_04:latest"}"
+: "${IMAGE_NAME:="ghcr.io/raven428/linters-ubuntu-22_04:latest"}"
 : "${PODMAN_ARGS:=""}"
 DIR2CHECK="$(readlink -f "${DIR2CHECK}")"
 export TERRAFORM_DIR PROM_RULES_DIR USE_GITIGNORE USE_LINTIGNORE

@@ -31,6 +31,6 @@ mcpServers:
       - "--shm-size=1g"
       - "--network=host"
       - "--env=OZON_PROXY=${MCP_PROXY_URL}"
-      - "ghcr.io/raven428/container-images/mcp-ozon:latest"
+      - "ghcr.io/raven428/mcp-ozon:latest"
     initTimeout: 222222
     timeout: 111111

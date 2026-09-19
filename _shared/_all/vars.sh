@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -ueo pipefail
-: "${TARGET_REGISTRY:=ghcr.io/raven428/container-images}"
+: "${TARGET_REGISTRY:=ghcr.io/raven428}"
 # MANUAL_IMAGES_DIRS='docker-alpine/ systemd-ubuntu-22_04/' ./build.sh for manual build
 : "${MANUAL_IMAGES_DIRS:=}"
 /usr/bin/env printf "\n———⟨ environment: ⟩———\n"

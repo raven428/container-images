@@ -6,7 +6,7 @@ set -ueo pipefail
 : "${ANSIBLENTRY:=""}"
 : "${USE_GITIGNORE:=""}"
 : "${USE_LINTIGNORE:=""}"
-: "${IMAGE_NAME:="ghcr.io/raven428/container-images/ansible-11:003"}"
+: "${IMAGE_NAME:="ghcr.io/raven428/ansible-11:003"}"
 : "${PODMAN_ARGS:=""}"
 DIR2CHECK="$(readlink -f "${DIR2CHECK}")"
 export ANSIBLENTRY USE_GITIGNORE USE_LINTIGNORE PATH2CONT
