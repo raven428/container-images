@@ -1,23 +1,22 @@
 # Image of Debian 12 (bookworm) with systemd entry
 
-Runs systemd 252 as PID 1 in a standard Docker container **without** any
-extra flags, capabilities, or host modifications. Works on Docker hosts with
-cgroup v2 (Linux ≥ 5.2).
+Runs stock systemd 252 as PID 1 in a rootless podman container without any extra flags,
+capabilities, or host modifications.
 
-The image contains a binary patch of `libsystemd-shared-252.so` that makes
-`cg_create` and `cg_attach` silently succeed when `/sys/fs/cgroup` is
-read-only (the default for unprivileged Docker containers). Systemd still
-manages services normally; it just cannot actually track processes in cgroups.
+No patched systemd is shipped. The image entry point is `/sbin/init`, which makes podman
+enable its systemd mode: it mounts `/sys/fs/cgroup` read-write and puts tmpfs on `/run`,
+`/run/lock`, `/tmp` and `/var/log/journal`. That entry point is a small wrapper that
+streams the journal to stdout, so the whole systemd log is visible via `podman logs`, and
+then executes systemd itself.
 
 ## Manual launch
 
 ```bash
 cont_name='test-container'
-/usr/bin/env docker run --name "${cont_name}" -d \
-  --tmpfs /run --tmpfs /run/lock \
-  host.tld/registry/path/debian-systemd-12:latest
+/usr/bin/env podman run --name "${cont_name}" -d \
+  host.tld/registry/path/systemd-debian12:latest
 count=7
-while ! /usr/bin/env docker exec "${cont_name}" systemctl status; do
+while ! /usr/bin/env podman exec "${cont_name}" systemctl status; do
   echo "waiting container ready, left [$count] tries"
   count=$((count - 1))
   if [[ $count -le 0 ]]; then
@@ -40,14 +39,10 @@ fi
 dependency:
   name: galaxy
 driver:
-  name: docker
+  name: podman
 platforms:
   - name: "tests-container"
-    image: "host.tld/registry/path/debian-systemd-12:latest"
-    tmpfs:
-      - /run
-      - /run/lock
-    command: /lib/systemd/systemd
+    image: "host.tld/registry/path/systemd-debian12:latest"
 provisioner:
   name: ansible
   env:

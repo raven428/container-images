@@ -1,8 +1,9 @@
 #!/bin/bash
 # cspell:ignore journalctl
-# Start systemd as PID 1 and stream the journal to stdout so all systemd
-# output is visible via docker logs. journalctl follows new entries without
-# -b so it is not tied to a boot ID and survives journal rotation.
+# Installed as /sbin/init so podman enables its systemd mode by the command path.
+# Starts systemd as PID 1 and streams the journal to stdout so all systemd output is
+# visible via podman logs. journalctl follows new entries without -b so it is not tied
+# to a boot ID and survives journal rotation.
 set -uo pipefail
 
 (
