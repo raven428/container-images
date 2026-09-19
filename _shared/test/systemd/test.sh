@@ -7,7 +7,7 @@ test_cont_name=$(
     /usr/bin/env awk -F '.' '{ print "test-systemd-ubuntu-" $2 }'
 )
 /usr/bin/env podman run \
-  -d --name "${test_cont_name}" \
+  -d --name "${test_cont_name}" --user root \
   "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}"
 count=7
 while ! /usr/bin/env podman exec "${test_cont_name}" systemctl status; do

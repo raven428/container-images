@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# cspell:ignore atopacct
 set -ueo pipefail
 # podman
 /files/shared/podman.sh
@@ -10,11 +11,14 @@ apt-get install -y --no-install-recommends \
   whois iotop netcat-openbsd telnet bind9-utils bind9-host bind9-dnsutils gdisk p7zip \
   iftop nmon reptyr psmisc jq git bc lsof progress pv tree iproute2 net-tools \
   hostname dmidecode groff-base hdparm lshw iputils-ping iputils-arping locales \
-  secure-delete moreutils less acl lz4 lzop lzma zstd unzip mtr patch ripgrep file \
+  secure-delete moreutils less acl lz4 lzop lzma zstd unzip mtr-tiny patch ripgrep file \
   redis-tools mysqltuner mariadb-client postgresql-client nftables iptables \
   binutils bsdextrautils openssh-client fuse-overlayfs libcap2-bin squashfs-tools \
   squashfuse debootstrap xfsprogs qemu-system-x86 qemu-utils expect crun runc
 apt-get upgrade -y
+if command -v systemctl >/dev/null; then
+  systemctl mask atopacct.service
+fi
 cat >/etc/locale.gen <<'EOF'
 en_US.UTF-8 UTF-8
 en_GB.UTF-8 UTF-8
@@ -27,11 +31,12 @@ sed -i "/^auth[[:space:]]\+sufficient[[:space:]]\+pam_rootok\.so$/a ${pam_line}"
 # direct download
 mkdir -vp /usr/local/bin
 cd /usr/local/bin
-curl -sLo kubectl "https://dl.k8s.io/release/$(curl -sL \
+curl --progress-bar -Lo kubectl "https://dl.k8s.io/release/$(curl -sL \
   https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-curl -Lo yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+curl -Lo yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+  --progress-bar
 chmod -v 755 kubectl yq
-curl -sL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+curl -L https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 curl -L "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl\
 _1.9.1_linux_amd64.deb" -o /files/grpcurl.deb && dpkg -i /files/grpcurl.deb
 
@@ -129,4 +134,5 @@ mkdir -vp /root/.config/containers
 cp -v /workspace/coder/config/containers/containers.conf /root/.config/containers
 
 # cleanup
-rm -Rf /usr/share/doc /usr/share/man /var/lib/apt/lists/* /root/.cache/pip /files
+apt-get clean
+rm -Rf /usr/share/doc /usr/share/man /root/.cache/pip /files

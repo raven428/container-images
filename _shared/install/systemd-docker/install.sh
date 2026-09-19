@@ -12,11 +12,9 @@ if [[ -r /etc/apt/sources.list.d/ubuntu.sources ]]; then
 fi
 apt-get update
 apt-get install -y --no-install-recommends apt-utils aptitude bash ca-certificates curl \
-  iproute2 less openssh-server python3 python3-apt python3-lz4 python3-psutil \
+  dbus iproute2 less openssh-server python3 python3-apt python3-lz4 python3-psutil \
   python3-zstd sudo systemd xz-utils
 systemctl enable ssh
-apt-get clean
-rm -rf /usr/share/doc /usr/share/man /var/lib/apt/lists/*
 systemd-machine-id-setup
 # Mask units that require kernel access unavailable in unprivileged Docker
 xargs -a "${S2D}/masked-units.list" systemctl mask
@@ -35,6 +33,8 @@ fi
 cp "${S2D}/entrypoint.sh" /sbin/init
 chmod 755 /sbin/init
 
-# cleanup
-apt-get clean
-rm -Rf /usr/share/doc /usr/share/man /var/lib/apt/lists/* /root/.cache/pip /files
+# Defer cleanup only when another installer still needs /files.
+if [[ "${SKIP_CLEANUP:-0}" != '1' ]]; then
+  apt-get clean
+  rm -Rf /usr/share/doc /usr/share/man /var/lib/apt/lists/* /root/.cache/pip /files
+fi
