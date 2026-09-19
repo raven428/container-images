@@ -25,6 +25,12 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
     echo "returning to [${TAG}] building…"
   }
   current_date="$(/usr/bin/env date '+%Y%m%d')"
+  dev_tag_args=()
+  _set_dev_tag_args dev_tag_args
+  dev_build_args=()
+  for dev_tag in "${dev_tag_args[@]+"${dev_tag_args[@]}"}"; do
+    dev_build_args+=(-t "${dev_tag}")
+  done
   lh_var='localhost' # DevSkim: ignore DS162092
   /usr/bin/env podman build \
     --network host \
@@ -38,6 +44,7 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
     -t "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}" \
     -t "${TARGET_REGISTRY}/${TAG}:${current_date}" \
     -t "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}-${current_date}" \
+    "${dev_build_args[@]+"${dev_build_args[@]}"}" \
     "${PODMAN_EXTRA_ARGS[@]+"${PODMAN_EXTRA_ARGS[@]}"}" \
     "${BUILD_CONTEXT_DIR}"
   if [[ -n "${IMAGE_TEST:-}" ]]; then
@@ -48,7 +55,8 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
         "${TARGET_REGISTRY}/${TAG}:latest" \
         "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}" \
         "${TARGET_REGISTRY}/${TAG}:${current_date}" \
-        "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}-${current_date}"
+        "${TARGET_REGISTRY}/${TAG}:${IMAGE_VER}-${current_date}" \
+        "${dev_tag_args[@]+"${dev_tag_args[@]}"}"
       TOTAL_RESULT=$((TOTAL_RESULT + ${TEST_RESULT:-1}))
     fi
   fi

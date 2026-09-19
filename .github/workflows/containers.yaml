@@ -41,6 +41,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       packages: write
+    env:
+      RUN_NUMBER: ${{ github.event_name == 'pull_request' && github.run_number || '' }}
     steps:
       - name: checkout repository
         uses: actions/checkout@v5

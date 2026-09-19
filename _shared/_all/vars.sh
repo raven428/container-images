@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 set -ueo pipefail
 : "${TARGET_REGISTRY:=ghcr.io/raven428}"
+DEV_TAG=''
+if [[ -n "${RUN_NUMBER:-}" ]]; then
+  DEV_TAG="dev.${RUN_NUMBER}"
+fi
+_set_dev_tag_args() {
+  local -n _dev_tag_args="$1"
+  _dev_tag_args=()
+  if [[ -n "${DEV_TAG}" ]]; then
+    _dev_tag_args=("${TARGET_REGISTRY}/${TAG}:${DEV_TAG}")
+  fi
+}
 # MANUAL_IMAGES_DIRS='docker-alpine/ systemd-ubuntu-22_04/' ./build.sh for manual build
 : "${MANUAL_IMAGES_DIRS:=}"
 /usr/bin/env printf "\n———⟨ environment: ⟩———\n"
