@@ -1,9 +1,45 @@
 #!/usr/bin/env bash
 set -ueo pipefail
 : "${TARGET_REGISTRY:=ghcr.io/raven428}"
+_validate_version_suffix() {
+  local _suffix="$1"
+  if [[ ! "${_suffix}" =~ ^[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$ ]]; then
+    echo "invalid VERSION_SUFFIX '${_suffix}': expected dot-separated ASCII" \
+      'letters, digits, or hyphens' >&2
+    return 66
+  fi
+  local -a _identifiers
+  local _identifier
+  IFS='.' read -r -a _identifiers <<<"${_suffix}"
+  for _identifier in "${_identifiers[@]}"; do
+    if [[ "${_identifier}" =~ ^[0-9]+$ && "${_identifier}" == 0* &&
+      "${_identifier}" != '0' ]]; then
+      echo "invalid VERSION_SUFFIX '${_suffix}': numeric identifier" \
+        "'${_identifier}' has a leading zero" >&2
+      return 66
+    fi
+  done
+}
 DEV_TAG=''
-if [[ -n "${RUN_NUMBER:-}" ]]; then
-  DEV_TAG="dev.${RUN_NUMBER}"
+if [[ -z "${PUBLISH_MODE:-}" && -z "${VERSION_SUFFIX:-}" ]]; then
+  :
+elif [[ -z "${PUBLISH_MODE:-}" || -z "${VERSION_SUFFIX:-}" ]]; then
+  echo 'PUBLISH_MODE and VERSION_SUFFIX must both be set or both be empty:' \
+    "PUBLISH_MODE='${PUBLISH_MODE:-}', VERSION_SUFFIX='${VERSION_SUFFIX:-}'" >&2
+  (exit 66)
+else
+  _validate_version_suffix "${VERSION_SUFFIX}"
+  case "${PUBLISH_MODE}" in
+  dev | skip)
+    DEV_TAG="dev.${VERSION_SUFFIX}"
+    ;;
+  release | schedule) ;;
+  *)
+    echo "invalid PUBLISH_MODE '${PUBLISH_MODE}': expected release, schedule," \
+      'dev, or skip' >&2
+    (exit 66)
+    ;;
+  esac
 fi
 _set_dev_tag_args() {
   local -n _dev_tag_args="$1"

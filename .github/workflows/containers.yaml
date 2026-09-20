@@ -42,7 +42,11 @@ jobs:
     permissions:
       packages: write
     env:
-      RUN_NUMBER: ${{ github.event_name == 'pull_request' && github.run_number || '' }}
+      VERSION_SUFFIX: ${{ format('{0}.{1}', github.run_number, github.run_attempt) }}
+      PUBLISH_MODE: "${{ github.event_name == 'schedule' && 'schedule' ||
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event_name == 'push' && 'release' || github.event_name == 'pull_request' &&
+        github.event.pull_request.user.login != 'dependabot[bot]' && 'dev' || 'skip' }}"
     steps:
       - name: checkout repository
         uses: actions/checkout@v5
