@@ -76,3 +76,17 @@ For each new patch N:
 - Do not use `git stash`, `git diff`, `git apply` or any other git commands for patch generation.
 - Paths inside the patch must be `a/<relative-path>` / `b/<relative-path>` so that `patch -p1` strips exactly one path component and lands in the right place.
 - Test the patched tree after applying all patches to confirm nothing is broken.
+
+# npm sources
+
+`NPM_PACKAGE` distinguishes an npm source from a container source. npm source `vars.sh` declares `UPSTREAM_URL` and `UPSTREAM_VER` for the pinned checkout, `PATCHSET` as a non-negative patchset number, and `NPM_CHECKS` as the allowed commands run before the one explicit build.
+
+`PUBLISH_MODE=release` uses `<upstream>-p<PATCHSET>` and falls back to `<upstream>-p<PATCHSET>-<UTC_DATE>-<VERSION_SUFFIX>`; `schedule` publishes the dated version directly; `dev` uses `<upstream>-p<PATCHSET>-dev.<VERSION_SUFFIX>`; and `skip` builds without creating or publishing an archive.
+
+Upstream is checked out in `sources/<name>/_shared/upstream`; tarballs are stored in `sources/<name>/_shared/npm-artifacts`. Build compiles before a token is available, while push only uploads the prepared tarballs.
+
+`_shared/npm/lib.sh`, `cont-prepare.sh`, and `cont-publish.sh` provide the shared npm implementation. Changes below `_shared/npm/` select all npm sources but do not select ordinary containers.
+
+`ghcr.io/raven428/node-builder:latest` was created by the preceding task, is used with Podman's pull-if-missing policy, and is intentionally not added to `DEPENDS`.
+
+Add an npm package with a new `sources/<name>/vars.sh`, patches, and README; do not add package-specific branches to `_shared/_all/*`.

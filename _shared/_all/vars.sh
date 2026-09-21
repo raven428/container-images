@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -ueo pipefail
 : "${TARGET_REGISTRY:=ghcr.io/raven428}"
+: "${NPM_REGISTRY:=https://npm.pkg.github.com}"
+: "${NPM_IMAGE:=ghcr.io/raven428/node-builder:latest}"
+: "${NPM_REPO_URL:=git+https://github.com/raven428/container-images.git}"
 _validate_version_suffix() {
   local _suffix="$1"
   if [[ ! "${_suffix}" =~ ^[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$ ]]; then
@@ -102,6 +105,50 @@ _fill_all_images() {
   done
 }
 
+# Source a vars.sh in an isolated copy while retaining errors from the source.
+_probe_vars() {
+  local _image="$1" _field="$2" _probe
+  _probe="$(/usr/bin/env mktemp -d -t 'container-images-vars-XXXXXX')"
+  # shellcheck disable=SC2064
+  trap "/usr/bin/env rm -rf '${_probe}'" EXIT
+  /usr/bin/env mkdir -p "${_probe}/bin" "${_probe}/sources"
+  /usr/bin/env cp -a "${_image}" "${_probe}/sources/"
+  /usr/bin/env printf '#!/usr/bin/env bash\nexit 0\n' >"${_probe}/bin/cp"
+  /usr/bin/env chmod +x "${_probe}/bin/cp"
+  (
+    cd "${_probe}"
+    PATH="${_probe}/bin:${PATH}"
+    eval "$(_build_vars_shunts "${_image}/vars.sh")"
+    # shellcheck disable=2034
+    TAG="${_image#sources/}"
+    # shellcheck disable=2034
+    IMAGE_DIR="${_image}"
+    # shellcheck disable=2034
+    PUSHING=1
+    # shellcheck disable=2034
+    NPM_PACKAGE=''
+    SHARED_ASSETS=()
+    # shellcheck disable=SC1091,SC1090
+    source "${_image}/vars.sh" >/dev/null
+    case "${_field}" in
+    package) /usr/bin/env printf '%s' "${NPM_PACKAGE}" ;;
+    assets) /usr/bin/env printf '%s\n' "${SHARED_ASSETS[@]:-}" ;;
+    esac
+  )
+}
+# Add every npm source to the associative array named by the first argument.
+_pick_npm_sources() {
+  local -n _picked="$1"
+  local _dir _image _package
+  for _dir in sources/*/; do
+    [[ -f "${_dir}vars.sh" ]] || continue
+    _image="${_dir%/}"
+    _package="$(_probe_vars "${_image}" package)"
+    [[ -n "${_package}" ]] && _picked["${_image}"]=1
+  done
+  return 0
+}
+
 MY_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "${MY_PATH}/../vars.sh"
@@ -136,26 +183,16 @@ else
         picked["sources/${BASH_REMATCH[1]}"]=1
       fi
     done <<<"${diff}"
+    if /usr/bin/env printf '%s\n' "${diff}" | /usr/bin/env grep -qE '^_shared/npm/'; then
+      _pick_npm_sources picked
+    fi
     # transitive hits via SHARED_ASSETS: source each vars.sh in a subshell
     # with side-effect commands neutralized via _build_vars_shunts
     for _dir in sources/*/; do
       [[ -f "${_dir}vars.sh" ]] || continue
       _image="${_dir%/}"
       [[ -n "${picked[${_image}]:-}" ]] && continue
-      _assets="$(
-        eval "$(_build_vars_shunts "${_dir}vars.sh")"
-        # shellcheck disable=2034
-        TAG="${_image#sources/}"
-        IMAGE_DIR="${_image}"
-        SHARED_ASSETS=()
-        # PUSHING=1 disables patch application and other push-guarded
-        # side effects while we only need to read SHARED_ASSETS
-        # shellcheck disable=2034
-        PUSHING=1
-        # shellcheck disable=1090
-        source "${_dir}vars.sh" 2>/dev/null || true
-        /usr/bin/env printf '%s\n' "${SHARED_ASSETS[@]:-}"
-      )"
+      _assets="$(_probe_vars "${_image}" assets)"
       [[ -z "${_assets}" ]] && continue
       _hit=0
       while IFS= read -r _entry; do

@@ -7,6 +7,8 @@ MY_PATH="$(dirname "${MY_BIN}")"
 source "${MY_PATH}/vars.sh"
 # shellcheck source=/dev/null
 source "${MY_PATH}/../vars.sh"
+# shellcheck source=/dev/null
+source "${MY_PATH}/../npm/lib.sh"
 /usr/bin/env printf "\n———⟨ building: ⟩———\n"
 TOTAL_RESULT=0
 # shellcheck disable=2153
@@ -17,6 +19,8 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
   DEPENDS=''
   BUILD_CONTEXT_DIR="${IMAGE_DIR}"
   PODMAN_EXTRA_ARGS=()
+  NPM_PACKAGE=''
+  NPM_CHECKS=()
   # shellcheck source=/dev/null
   source "${IMAGE_DIR}/vars.sh"
   [[ -n "${DEPENDS}" ]] && {
@@ -24,6 +28,14 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
     MANUAL_IMAGES_DIRS="${DEPENDS}" ${MY_BIN}
     echo "returning to [${TAG}] building…"
   }
+  if [[ -n "${NPM_PACKAGE}" ]]; then
+    if ! _npm_build "${TAG}" "${NPM_CHECKS[@]+"${NPM_CHECKS[@]}"}"; then
+      echo "npm build failed for [${TAG}]"
+      TOTAL_RESULT=$((TOTAL_RESULT + 1))
+    fi
+    unset IMAGE_TEST
+    continue
+  fi
   current_date="$(/usr/bin/env date '+%Y%m%d')"
   dev_tag_args=()
   _set_dev_tag_args dev_tag_args
