@@ -8,12 +8,12 @@ Patched build of [pi-web](https://github.com/jmfederico/pi-web), published to Gi
 
 - `01-prompt-send-chord` – new "Ctrl+Enter sends message" Enter-key preference: Enter/Shift+Enter always insert a line break, Ctrl+Enter (⌘+Enter on macOS) sends
 - `02-chat-card-disclosure` – configurable disclosure (`none`/`live`/`last`/`all`) for thinking, skill, and tool-result/details/diff transcript cards, plus a sixth `eventsGroup` subkey for the summarizing events group card
-  - `ui.disclosure.thinking` – `"none"` (default) | `"live"` | `"last"` | `"all"`
-  - `ui.disclosure.skillInvocation` – `"none"` (default) | `"live"` | `"last"` | `"all"`
-  - `ui.disclosure.toolResult` – `"none"` (default) | `"live"` | `"last"` | `"all"`
-  - `ui.disclosure.toolDetails` – `"none"` (default) | `"live"` | `"last"` | `"all"`
-  - `ui.disclosure.toolDiff` – `"none"` | `"live"` | `"last"` | `"all"` (default)
-  - `ui.disclosure.eventsGroup` – `"live"` (default) | `"last"` | `"all"` (`"none"` is not accepted)
+  - `ui.disclosure.thinking` – `none` (default) | `live` | `last` | `all`
+  - `ui.disclosure.skillInvocation` – `none` (default) | `live` | `last` | `all`
+  - `ui.disclosure.toolResult` – `none` (default) | `live` | `last` | `all`
+  - `ui.disclosure.toolDetails` – `none` (default) | `live` | `last` | `all`
+  - `ui.disclosure.toolDiff` – `none` | `live` | `last` | `all` (default)
+  - `ui.disclosure.eventsGroup` – `live` (default) | `last` | `all` (`none` is not accepted)
 
 ```json
 {

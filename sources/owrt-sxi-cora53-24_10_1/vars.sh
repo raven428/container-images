@@ -7,8 +7,10 @@ set -ueo pipefail
     '_shared/install/openwrt/:_shared/files'
   )
 }
-stage_shared_assets
-# shellcheck disable=2034
-BUILD_CONTEXT_DIR="sources/${TAG}/_shared"
-# shellcheck disable=2034
-PODMAN_EXTRA_ARGS=(--file "sources/${TAG}/Dockerfile")
+if [[ -z "${PUSHING:-}" ]]; then
+  stage_shared_assets
+  # shellcheck disable=2034
+  BUILD_CONTEXT_DIR="sources/${TAG}/_shared"
+  # shellcheck disable=2034
+  PODMAN_EXTRA_ARGS=(--file "sources/${TAG}/Dockerfile")
+fi

@@ -16,7 +16,7 @@ jobs:
     name: define matrix
     runs-on: ubuntu-latest
     outputs:
-      images: ${{ steps.define-matrix.outputs.images }}
+      matrix: ${{ steps.define-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -28,15 +28,14 @@ jobs:
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: |
           source _shared/_all/matrix.sh
-          echo "images=${DIR_SON}" >> "${GITHUB_OUTPUT}"
+          echo "matrix=${PKG_MATRIX}" >> "${GITHUB_OUTPUT}"
   containers:
-    name: "build ${{ matrix.image }} container"
+    name: "${{ matrix.kind }} ${{ matrix.tag }}"
     needs: define-matrix
-    if: needs.define-matrix.outputs.images != '[]'
+    if: needs.define-matrix.outputs.matrix != '{"include":[]}'
     strategy:
       fail-fast: false
-      matrix:
-        image: ${{ fromJSON(needs.define-matrix.outputs.images) }}
+      matrix: ${{ fromJSON(needs.define-matrix.outputs.matrix) }}
     timeout-minutes: 22
     runs-on: ubuntu-24.04
     permissions:
@@ -54,25 +53,22 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           submodules: recursive
-      - name: patch IMAGE_VER for pull request
-        if: github.event_name == 'pull_request'
-        run: >
-          sed -i "s/IMAGE_VER='[^']*'/IMAGE_VER='999'/"
-          "sources/${{ matrix.image }}/vars.sh"
       - name: build and test images
         run: |
           sudo ./podman.sh
-          MANUAL_IMAGES_DIRS='${{ matrix.image }}/' _shared/_all/build.sh
-      - name: login to ghcr
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          MANUAL_IMAGES_DIRS='${{ matrix.tag }}/' _shared/_all/build.sh
       - name: push images
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: MANUAL_IMAGES_DIRS='${{ matrix.image }}/' _shared/_all/push.sh
+        run: |
+          if [[ '${{ matrix.kind }}' == 'img' ]]; then
+            echo 'logging in to ghcr for container package'
+            printf '%s' "${NODE_AUTH_TOKEN}" |
+              podman login ghcr.io --username '${{ github.actor }}' --password-stdin
+          else
+            echo 'skipping ghcr login for npm package'
+          fi
+          MANUAL_IMAGES_DIRS='${{ matrix.tag }}/' _shared/_all/push.sh
   MegaLinter:
     name: MegaLinter
     timeout-minutes: 11

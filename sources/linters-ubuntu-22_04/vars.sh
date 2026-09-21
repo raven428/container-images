@@ -7,4 +7,6 @@ set -ueo pipefail
     '_shared/prepare2check.sh:_shared/prepare2check.sh'
   )
 }
-stage_shared_assets
+if [[ -z "${PUSHING:-}" ]]; then
+  stage_shared_assets
+fi

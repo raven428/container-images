@@ -1,3 +1,4 @@
+<!-- cspell:ignore patchset -->
 # Agent instructions
 
 ## Generating patches for upstream sources

@@ -9,4 +9,6 @@ set -ueo pipefail
     '_shared/test/systemd/test.sh:_shared/test/systemd/test.sh'
   )
 }
-stage_shared_assets
+if [[ -z "${PUSHING:-}" ]]; then
+  stage_shared_assets
+fi

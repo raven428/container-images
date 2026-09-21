@@ -5,4 +5,6 @@ set -ueo pipefail
   IMAGE_VER='000'
   SHARED_ASSETS=()
 }
-stage_shared_assets
+if [[ -z "${PUSHING:-}" ]]; then
+  stage_shared_assets
+fi

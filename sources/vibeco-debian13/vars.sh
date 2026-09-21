@@ -13,5 +13,7 @@ set -ueo pipefail
     '_shared/sudoers:_shared/sudoers'
   )
 }
-stage_shared_assets
-stage_profile "sources/${TAG}/_shared/profile-dmisu"
+if [[ -z "${PUSHING:-}" ]]; then
+  stage_shared_assets
+  stage_profile "sources/${TAG}/_shared/profile-dmisu"
+fi

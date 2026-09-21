@@ -10,5 +10,7 @@ set -ueo pipefail
     'podman.sh:_shared/podman.sh'
   )
 }
-stage_shared_assets
-stage_profile "sources/${TAG}/_shared/profile-dmisu"
+if [[ -z "${PUSHING:-}" ]]; then
+  stage_shared_assets
+  stage_profile "sources/${TAG}/_shared/profile-dmisu"
+fi

@@ -9,9 +9,8 @@ MY_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "${MY_PATH}/../vars.sh"
 if [[ -f "sources/${TAG}/vars.sh" ]]; then
-  # shunt all side-effect calls except stage_shared_assets — it must run
-  # so that post-process steps (e.g. async-check.diff rewrite) find staged files
-  eval "$(_build_vars_shunts "sources/${TAG}/vars.sh" stage_shared_assets)"
+  # shellcheck disable=2034
+  PUSHING=1
   # shellcheck source=/dev/null
   source "sources/${TAG}/vars.sh"
 else

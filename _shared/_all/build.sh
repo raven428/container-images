@@ -36,6 +36,7 @@ for IMAGE_DIR in "${IMAGES_DIRS[@]}"; do
     unset IMAGE_TEST
     continue
   fi
+  _set_image_version
   current_date="$(/usr/bin/env date '+%Y%m%d')"
   dev_tag_args=()
   _set_dev_tag_args dev_tag_args

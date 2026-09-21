@@ -23,45 +23,11 @@ checkout_upstream() {
 
 # Clone the dotfiles repo into sources/${TAG}/_shared/profile-dmisu.
 # Sources _shared/install/profile.sh then calls install_profile.
-# Wrapped in a named function so _build_vars_shunts can neutralize it.
 stage_profile() {
   local _dest="${1:-sources/${TAG:?}/_shared/profile-dmisu}"
   # shellcheck source=/dev/null
   source '_shared/install/profile.sh'
   install_profile "${_dest}"
-}
-
-# Build a string of no-op bash function definitions for every function
-# declared in _shared/vars.sh that is called inside <vars_file>.
-# All arguments after the first are names to skip (not shunt); any number.
-# Usage: eval "$(_build_vars_shunts sources/foo/vars.sh)"
-#        eval "$(_build_vars_shunts sources/foo/vars.sh stage_shared_assets)"
-#        eval "$(_build_vars_shunts sources/foo/vars.sh foo bar baz)"
-_build_vars_shunts() {
-  local _file="$1"
-  shift
-  local _skip=("$@")
-  local _self
-  _self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-  local _fn _s _found
-  # grep function names declared in this file (pattern: "name() {")
-  while IFS= read -r _fn; do
-    # only emit shunt if the function is actually called in the target file
-    /usr/bin/env grep -qE "(^|[[:space:]])${_fn}([[:space:]]|$)" \
-      "${_file}" 2>/dev/null || continue
-    # skip names requested by caller
-    _found=0
-    for _s in "${_skip[@]+"${_skip[@]}"}"; do
-      [[ "${_fn}" == "${_s}" ]] && {
-        _found=1
-        break
-      }
-    done
-    [[ ${_found} -eq 1 ]] && continue
-    /usr/bin/env printf '%s() { :; }; ' "${_fn}"
-  done < <(
-    /usr/bin/env grep -oP '^[a-zA-Z_][a-zA-Z0-9_]+(?=\s*\(\))' "${_self}"
-  )
 }
 
 # Expand a SHARED_ASSETS src field to a list of concrete filesystem paths.

@@ -10,15 +10,17 @@ set -ueo pipefail
     '_shared/sudoers:_shared/sudoers'
   )
 }
-stage_shared_assets
-stage_profile "sources/${TAG}/_shared/profile-dmisu"
-# Patches under patches/ tweak the staged _shared tree (not an upstream
-# checkout): 0001 appends the opencode binary download to coder.sh so the
-# image ships /usr/local/bin/opencode.
-# shellcheck disable=2153
-[[ -z "${PUSHING:-}" ]] && for _patch in "${IMAGE_DIR}/patches/"*.patch; do
-  [[ -f "${_patch}" ]] || continue
-  echo "applying ${_patch}"
-  patch -d "sources/${TAG}/_shared" -p1 <"${_patch}"
-done
-unset _patch
+if [[ -z "${PUSHING:-}" ]]; then
+  stage_shared_assets
+  stage_profile "sources/${TAG}/_shared/profile-dmisu"
+  # Patches under patches/ tweak the staged _shared tree (not an upstream
+  # checkout): 0001 appends the opencode binary download to coder.sh so the
+  # image ships /usr/local/bin/opencode.
+  # shellcheck disable=2153
+  for _patch in "${IMAGE_DIR}/patches/"*.patch; do
+    [[ -f "${_patch}" ]] || continue
+    echo "applying ${_patch}"
+    patch -d "sources/${TAG}/_shared" -p1 <"${_patch}"
+  done
+  unset _patch
+fi
