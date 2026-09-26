@@ -8,7 +8,7 @@
  
  ## Global config example
  
-@@ -76,6 +77,15 @@
+@@ -76,6 +77,17 @@
    "shortcuts": {
      "core:view.chat": "mod+1",
      "core:session.stop": null
@@ -19,12 +19,14 @@
 +      "skillInvocation": "none",
 +      "toolResult": "last",
 +      "toolDetails": "none",
-+      "toolDiff": "all", "toolArgs": "none", "toolContent": "all"
++      "toolDiff": "all",
++      "toolArgs": "none",
++      "toolContent": "all"
 +    }
    }
  }
  ```
-@@ -170,6 +180,7 @@
+@@ -170,6 +182,7 @@
  | PI WEB plugin desired enablement/settings | `plugins.<id>.enabled`, `plugins.<id>.settings` | — | Global + sessiond startup snapshot for server entries | Not core local config; plugins may read their own project files | Browser-only: reload tab. Server-backed: manually restart sessiond, then reload tab |
  | Server-plugin safe start | `serverPlugins.safeStart` | — | Global/offline recovery | Not supported locally; manage with `pi-web plugins safe-start ...` | Applied before discovery/import on next sessiond start |
  | Keyboard shortcuts | `shortcuts.<actionId>` | — | Global | Not supported locally | Applies after settings save/config refresh |
@@ -32,7 +34,7 @@
  | Project config version | `version` | — | Project | Project-local only; must be `1` when present | Next project-config read |
  | **Runtime-only environment variables** |  |  |  |  |  |
  | Global config file path | — | `PI_WEB_CONFIG` (`XDG_CONFIG_HOME` affects the default path) | Process/env | Selects the global config file; not a project config | Restart services/processes after changing env |
-@@ -457,6 +468,41 @@
+@@ -457,6 +470,41 @@
  
  Prefer Settings → Keyboard for editing shortcuts interactively.
  
@@ -45,7 +47,7 @@
 +- `last`: the last card of that kind in the loaded transcript, independent of session activity.
 +- `all`: always open. This is the default for `toolDiff` and `toolContent`.
 +
-+For `toolArgs` and `toolContent`, `live` and `last` target the last tool execution in the loaded transcript that actually renders the corresponding card. The `Result` card stays open regardless of mode when the tool execution errored; it now renders alongside a diff too, where the result text used to be hidden entirely. The `Details` card is not force-opened on error, since the error text lives in `Result`. A user can still collapse any card by clicking it in any mode.
++An empty or missing `ui.disclosure` reproduces the pre-existing UI behavior exactly. For `toolArgs` and `toolContent`, `live` and `last` target the last tool execution in the loaded transcript that actually renders the corresponding card. The `Result` card stays open regardless of mode when the tool execution errored; it now renders alongside a diff too, where the result text used to be hidden entirely. The `Details` card is not force-opened on error, since the error text lives in `Result`. A user can still collapse any card by clicking it in any mode.
 +
 +```json
 +{

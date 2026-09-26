@@ -20,11 +20,12 @@
          "diff": "^9.0.0",
 --- a/src/client/src/components/ToolExecutionView.ts
 +++ b/src/client/src/components/ToolExecutionView.ts
-@@ -1,15 +1,24 @@
+@@ -1,15 +1,36 @@
  import { LitElement, css, html } from "lit";
  import { customElement, property, state } from "lit/decorators.js";
  import { writeClipboardText } from "../clipboard";
 +import { toolArgsCardVisible, toolContentCardVisible } from "../chatDisclosureModes";
++import type { CodeHighlightLine } from "../codeHighlight";
 +import { languageForPath } from "../codeLanguage";
 +import type { CodeLanguage } from "../codeLanguage";
  import type { ToolExecutionPart } from "./shared";
@@ -37,15 +38,26 @@
    text: string;
  }
  
-+interface RenderedCodeSegment {
++interface InputCardOptions {
++  label: string;
 +  text: string;
-+  className?: string;
++  copyText: string;
++  language: CodeLanguage | undefined;
++  numbered: boolean;
++  open: boolean;
++  showFull: boolean;
++  copied: boolean;
++  fullLabel: string;
++  copyLabel: string;
++  onToggle: (event: Event) => void;
++  onCopy: (value: string) => Promise<void>;
++  onShowAll: () => void;
 +}
 +
  @customElement("tool-execution-view")
  export class ToolExecutionView extends LitElement {
    @property({ attribute: false }) execution: ToolExecutionPart | undefined;
-@@ -19,7 +28,45 @@
+@@ -19,7 +40,45 @@
    @property({ attribute: false }) argsOpen = false;
    @property({ attribute: false }) contentOpen = true;
    @state() private showFullDiff = false;
@@ -91,7 +103,7 @@
  
    override render() {
      const execution = this.execution;
-@@ -52,6 +99,8 @@
+@@ -52,6 +111,8 @@
          ${previewMismatch ? html`<p class="notice">Applied diff differs from the preview.</p>` : null}
          ${errorText === undefined || errorText === "" ? null : html`<pre class="error-text">${errorText}</pre>`}
          ${this.renderTargetBody(target)}
@@ -100,7 +112,7 @@
          ${visibleDiff === undefined ? null : this.renderDiffBody(visibleDiff, actualDiff === undefined ? "Preview diff" : "Applied diff")}
          ${this.renderResultBody(execution.resultText, execution.status === "error")}
        </section>
-@@ -84,6 +133,130 @@
+@@ -84,6 +145,159 @@
      `;
    }
  
@@ -114,7 +126,21 @@
 +    }
 +    if (typeof serialized !== "string") return null;
 +    const text = serialized;
-+    return this.renderInputCard("Arguments", text, text, "json", false, this.argsOpen, this.showFullArgs, this.copiedArgs, "Full JSON", "Copy JSON", (event) => { this.onInputToggle("args", event); }, (value) => this.copyInput("args", value), () => { this.showFullArgs = true; });
++    return this.renderInputCard({
++      label: "Arguments",
++      text,
++      copyText: text,
++      language: "json",
++      numbered: false,
++      open: this.argsOpen,
++      showFull: this.showFullArgs,
++      copied: this.copiedArgs,
++      fullLabel: "Full JSON",
++      copyLabel: "Copy JSON",
++      onToggle: (event) => { this.onInputToggle("args", event); },
++      onCopy: (value) => this.copyInput("args", value),
++      onShowAll: () => { this.showFullArgs = true; },
++    });
 +  }
 +
 +  private renderContentBody(execution: ToolExecutionPart) {
@@ -123,24 +149,39 @@
 +    if (text === undefined) return null;
 +    const displayText = text.endsWith("\n") ? text.slice(0, -1) : text;
 +    const language = languageForPath(pathFromArgs(execution.args));
-+    return this.renderInputCard("Written content", displayText, text, language, true, this.contentOpen, this.showFullContent, this.copiedContent, "Full content", "Copy content", (event) => { this.onInputToggle("content", event); }, (value) => this.copyInput("content", value), () => { this.showFullContent = true; });
++    return this.renderInputCard({
++      label: "Written content",
++      text: displayText,
++      copyText: text,
++      language,
++      numbered: true,
++      open: this.contentOpen,
++      showFull: this.showFullContent,
++      copied: this.copiedContent,
++      fullLabel: "Full content",
++      copyLabel: "Copy content",
++      onToggle: (event) => { this.onInputToggle("content", event); },
++      onCopy: (value) => this.copyInput("content", value),
++      onShowAll: () => { this.showFullContent = true; },
++    });
 +  }
 +
-+  private renderInputCard(
-+    label: string,
-+    text: string,
-+    copyText: string,
-+    language: CodeLanguage | undefined,
-+    numbered: boolean,
-+    open: boolean,
-+    showFull: boolean,
-+    copied: boolean,
-+    fullLabel: string,
-+    copyLabel: string,
-+    onToggle: (event: Event) => void,
-+    onCopy: (value: string) => Promise<void>,
-+    onShowAll: () => void,
-+  ) {
++  private renderInputCard(options: InputCardOptions) {
++    const {
++      label,
++      text,
++      copyText,
++      language,
++      numbered,
++      open,
++      showFull,
++      copied,
++      fullLabel,
++      copyLabel,
++      onToggle,
++      onCopy,
++      onShowAll,
++    } = options;
 +    const lines = text.split("\n");
 +    const truncated = !showFull && lines.length > MAX_COLLAPSED_DIFF_LINES;
 +    const visibleLines = truncated ? lines.slice(0, MAX_COLLAPSED_DIFF_LINES) : lines;
@@ -166,7 +207,7 @@
 +
 +  private renderCodeLines(lines: string[], language: CodeLanguage | undefined, numbered: boolean) {
 +    if (language !== undefined && this.codeHighlightModule === undefined) this.loadCodeHighlightModule();
-+    const highlightedLines: RenderedCodeSegment[][] = language === undefined || this.codeHighlightModule === undefined
++    const highlightedLines: CodeHighlightLine[] = language === undefined || this.codeHighlightModule === undefined
 +      ? lines.map((text) => text === "" ? [] : [{ text }])
 +      : this.codeHighlightModule.highlightCode(lines.join("\n"), language);
 +    if (language !== undefined && this.codeHighlightModule !== undefined) {
@@ -176,7 +217,7 @@
 +    const lineCount = highlightedLines.length;
 +    const lineNumberDigits = String(lineCount).length;
 +    const lineNumberStyle = numbered ? `--line-number-width: ${String(lineNumberDigits)}ch` : "";
-+    return html`<code class=${numbered ? "input-code numbered" : "input-code"} style=${lineNumberStyle}>${highlightedLines.map((line, index) => html`<span class="code-line">${numbered ? html`<span class="line-number" aria-hidden="true">${String(index + 1)}</span>` : null}<span class="line-content">${line.map((segment) => html`<span class=${segment.className ?? ""}>${segment.text}</span>`)}</span></span>`)}</code>`;
++    return html`<code class=${numbered ? "input-code numbered" : "input-code"} style=${lineNumberStyle}>${highlightedLines.map((line, index) => html`<span class="code-line">${numbered ? html`<span class="line-number" aria-hidden="true">${String(index + 1)}</span>` : null}<span class="line-content">${line.map((segment) => segment.className === undefined ? segment.text : html`<span class=${segment.className}>${segment.text}</span>`)}</span></span>`)}</code>`;
 +  }
 +
 +  private loadCodeHighlightModule(): void {
@@ -231,7 +272,7 @@
    private renderResultBody(text: string | undefined, isError: boolean) {
      if (text === undefined || text === "") return null;
      return html`
-@@ -177,6 +350,18 @@
+@@ -177,6 +391,18 @@
      .diff .added { background: color-mix(in srgb, var(--pi-success) 12%, transparent); }
      .diff .removed { background: color-mix(in srgb, var(--pi-danger) 12%, transparent); }
      .show-more { justify-self: start; }

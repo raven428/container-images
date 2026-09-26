@@ -47,7 +47,7 @@
                </ul>
                ${answer.fromDraft ? html`<p class="draft-note">Draft answer · not sent</p>` : null}
              `}
-@@ -466,6 +468,18 @@
+@@ -466,6 +468,17 @@
        white-space: pre-wrap;
        overflow-wrap: anywhere;
      }
@@ -62,11 +62,10 @@
 +    .markdown-block blockquote { border-left: 3px solid var(--pi-border); padding-left: 10px; color: var(--pi-muted); }
 +    .question-copy a, .markdown-block a { color: var(--pi-accent); }
 +    .markdown-block .table-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
-+
      fieldset.question > .question-detail, .record-question > .question-detail {
        padding-inline-start: calc(var(--question-number-column) + var(--question-copy-gap));
      }
-@@ -543,6 +557,7 @@
+@@ -543,6 +556,7 @@
      .record-question h3 { display: grid; grid-template-columns: var(--question-number-column) minmax(0, 1fr); align-items: start; gap: var(--question-copy-gap); margin-bottom: 8px; font-size: 14px; line-height: 1.35; }
      .record-answers { display: grid; gap: 4px; margin: 0; padding-left: 22px; line-height: 1.4; }
      .other-record-text { white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -1,21 +1,21 @@
 # `@raven428/pi-web`
 
-<!-- cspell:ignore autoscroll enum jmfederico lezer patchset subkey subsession toolArgs toolContent -->
+<!-- cspell:ignore enum jmfederico patchset subkey subsession toolArgs toolContent -->
 
 Patched build of [pi-web](https://github.com/jmfederico/pi-web), published to GitHub Packages as `@raven428/pi-web`. The upstream tag and patchset number live in `vars.sh`. Release versions use `<upstream>-p<PATCHSET>` and `<upstream>-p<PATCHSET>-<UTC_DATE>-<VERSION_SUFFIX>`; pull requests use `<upstream>-p<PATCHSET>-dev.<VERSION_SUFFIX>`.
 
 ## List of patches
 
 - `01-prompt-send-chord` – new "Ctrl+Enter sends message" Enter-key preference: Enter/Shift+Enter always insert a line break, Ctrl+Enter (⌘+Enter on macOS) sends
-- `02-chat-card-disclosure` – configurable disclosure (`none`/`live`/`last`/`all`) for thinking, skill, and tool-result/details/diff/input transcript cards, plus the eighth `eventsGroup` subkey for the summarizing events group card
+- `02-chat-card-disclosure` – configurable disclosure (`none`/`live`/`last`/`all`) for thinking, skill, and tool-result/details/diff/arguments/written-content transcript cards, plus the eighth `eventsGroup` subkey for the summarizing events group card
   - `ui.disclosure.thinking` – `none` (default) | `live` | `last` | `all`
   - `ui.disclosure.skillInvocation` – `none` (default) | `live` | `last` | `all`
   - `ui.disclosure.toolResult` – `none` (default) | `live` | `last` | `all`
   - `ui.disclosure.toolDetails` – `none` (default) | `live` | `last` | `all`
   - `ui.disclosure.toolDiff` – `none` | `live` | `last` | `all` (default)
-  - `ui.disclosure.toolArgs` – `none` (default) | `live` | `last` | `all`
-  - `ui.disclosure.toolContent` – `none` | `live` | `last` | `all` (default)
-  - `ui.disclosure.eventsGroup` – `live` (default) | `last` | `all` (`none` is not accepted); `live` and `last` for `toolArgs`/`toolContent` target the last call that has that card
+  - `ui.disclosure.toolArgs` – `none` (default) | `live` | `last` | `all`; `live`/`last` target the last call that renders this card
+  - `ui.disclosure.toolContent` – `none` | `live` | `last` | `all` (default); `live`/`last` target the last call that renders this card
+  - `ui.disclosure.eventsGroup` – `live` (default) | `last` | `all` (`none` is not accepted)
 
 ```json
 {
