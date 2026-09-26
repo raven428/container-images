@@ -1,6 +1,6 @@
 # `@raven428/pi-web`
 
-<!-- cspell:ignore jmfederico patchset subkey -->
+<!-- cspell:ignore enum jmfederico patchset subkey subsession -->
 
 Patched build of [pi-web](https://github.com/jmfederico/pi-web), published to GitHub Packages as `@raven428/pi-web`. The upstream tag and patchset number live in `vars.sh`. Release versions use `<upstream>-p<PATCHSET>` and `<upstream>-p<PATCHSET>-<UTC_DATE>-<VERSION_SUFFIX>`; pull requests use `<upstream>-p<PATCHSET>-dev.<VERSION_SUFFIX>`.
 
@@ -33,3 +33,4 @@ Patched build of [pi-web](https://github.com/jmfederico/pi-web), published to Gi
 - `03-agent-session-title` – disable PI WEB's extra model request for automatic session naming and forward pi.dev extension-driven title changes live to the browser
 - `04-panel-collapse-persistence` – persist navigation/workspace panel collapsed state, navigation section (`machines`/`projects`/`workspaces`/`sessions`) collapsed state, and the archived sessions section's expanded state across tab reloads
 - `05-function-key-shortcuts` – allow lone function keys (`F1`-`F24`) as shortcut activators, not just Ctrl/Cmd/Alt chords
+- `06-spawn-thinking-level` – add a `thinkingLevel` enum parameter to `spawn_subsession`/`spawn_session`, plus a `provider/model-id:level` suffix on their `model` parameter (the suffix wins over `thinkingLevel` when both are set); omitting both inherits the spawning session's level, while an explicit `model` without a level lets pi apply its own default for that model; an unsupported level is clamped to the nearest one the target model supports with a note in the result, and the actual level the child runs with is always reported back

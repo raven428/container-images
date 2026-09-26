@@ -6,7 +6,7 @@ set -ueo pipefail
   NPM_PACKAGE='@raven428/pi-web'
   UPSTREAM_URL='https://github.com/jmfederico/pi-web.git'
   UPSTREAM_VER='v1.202609.0'
-  PATCHSET='0'
+  PATCHSET='1'
   NPM_CHECKS=(
     'npm run typecheck'
   )
