@@ -72,42 +72,63 @@
      .unanswered-record { margin: 0; color: var(--pi-muted); font-style: italic; }
 --- a/src/client/src/components/AskUserCard.test.ts
 +++ b/src/client/src/components/AskUserCard.test.ts
-@@ -26,9 +26,11 @@
+@@ -4,6 +4,7 @@
+ import type { AskUserOutcome, AskUserQuestion, PendingAskUser } from "../../../shared/apiTypes";
+ import { saveAskDraft } from "../askDrafts";
+ import { AskUserCard, type AskUserSubmitCallback } from "./AskUserCard";
++import { FormattedText } from "./FormattedText";
+ 
+ afterEach(() => {
+   document.body.replaceChildren();
+@@ -26,9 +27,13 @@
      const web = inputWithValue(root, "web");
  
      expect(fieldsets).toHaveLength(2);
 -    expect(legends[0]?.textContent).toContain("Choose an editor");
-+    expect(Reflect.get(requiredElement(legends[0]?.querySelector("formatted-text"), "question markdown"), "text"))
++    const questionMarkdown = legends[0]?.querySelector("formatted-text");
++    expect(questionMarkdown instanceof FormattedText ? questionMarkdown.text : undefined)
 +      .toBe("Choose an editor");
      expect(fieldsets[0]?.getAttribute("aria-describedby")).toBe("ask-user-question-detail-0");
 -    expect(root.querySelector("#ask-user-question-detail-0")?.textContent).toBe("Used for examples.");
-+    expect(Reflect.get(requiredElement(root.querySelector("#ask-user-question-detail-0 formatted-text"), "detail markdown"), "text"))
++    const detailMarkdown = root.querySelector("#ask-user-question-detail-0 formatted-text");
++    expect(detailMarkdown instanceof FormattedText ? detailMarkdown.text : undefined)
 +      .toBe("Used for examples.");
      expect(vim.type).toBe("radio");
      expect(code.name).toBe(vim.name);
      expect(web.type).toBe("checkbox");
-@@ -178,9 +180,11 @@
+@@ -178,9 +183,13 @@
      expect(root.querySelector("input, textarea, button, select")).toBeNull();
      expect(root.textContent).toContain("Superseded");
      expect(root.textContent).toContain("Fast");
 -    expect(root.textContent).toContain("It keeps the feedback loop short.");
-+    expect(Reflect.get(requiredElement(root.querySelector(".other-record-text formatted-text"), "custom answer markdown"), "text"))
++    const customAnswerMarkdown = root.querySelector(".other-record-text formatted-text");
++    expect(customAnswerMarkdown instanceof FormattedText ? customAnswerMarkdown.text : undefined)
 +      .toBe("It keeps the feedback loop short.");
      expect(root.textContent).toContain("Draft answer · not sent");
 -    expect(root.textContent).toContain("Deployment region");
-+    expect([...root.querySelectorAll(".record-question h3 formatted-text")].map((element) => Reflect.get(element, "text")))
++    expect([...root.querySelectorAll(".record-question h3 formatted-text")].map((element) =>
++      element instanceof FormattedText ? element.text : undefined))
 +      .toContain("Deployment region");
      expect(root.textContent).toContain("Unanswered");
    });
  });
 --- a/src/client/src/components/ChatView.askUser.test.ts
 +++ b/src/client/src/components/ChatView.askUser.test.ts
-@@ -73,7 +73,8 @@
+@@ -3,6 +3,7 @@
+ import { afterEach, describe, expect, it } from "vitest";
+ import type { AskUserOutcome } from "../../../shared/apiTypes";
+ import { AskUserCard } from "./AskUserCard";
++import { FormattedText } from "./FormattedText";
+ import { ChatView } from "./ChatView";
+ 
+ afterEach(() => {
+@@ -73,7 +74,9 @@
      const cardRoot = requiredElement(card.shadowRoot, "ask_user record shadow root");
      expect(cardRoot.textContent).toContain("Answers sent");
      expect(cardRoot.textContent).toContain("Vim");
 -    expect(cardRoot.textContent).toContain("Which region?");
-+    expect([...cardRoot.querySelectorAll(".record-question h3 formatted-text")].map((element) => Reflect.get(element, "text")))
++    expect([...cardRoot.querySelectorAll(".record-question h3 formatted-text")].map((element) =>
++      element instanceof FormattedText ? element.text : undefined))
 +      .toContain("Which region?");
      expect(cardRoot.textContent).toContain("Unanswered");
      expect(cardRoot.querySelector("input, textarea, button, select")).toBeNull();
