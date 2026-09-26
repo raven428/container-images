@@ -1,0 +1,135 @@
+--- a/src/client/src/components/AskUserCard.ts
++++ b/src/client/src/components/AskUserCard.ts
+@@ -1,6 +1,7 @@
+ import { LitElement, css, html, type PropertyValues, type TemplateResult } from "lit";
+ import { customElement, property, state } from "lit/decorators.js";
+ import { ifDefined } from "lit/directives/if-defined.js";
++import "./FormattedText";
+ import {
+   ASK_USER_OTHER_TEXT_MAX_LENGTH,
+   type AskUserOutcome,
+@@ -109,9 +110,9 @@
+       >
+         <legend>
+           <span class="question-number">${String(index + 1)}.</span>
+-          <span>${question.question}</span>
++          <span class="question-copy" dir="auto"><formatted-text .text=${question.question}></formatted-text></span>
+         </legend>
+-        ${question.detail === undefined ? null : html`<p class="question-detail" id=${detailId}>${question.detail}</p>`}
++        ${question.detail === undefined ? null : html`<div class="question-detail" dir="auto" id=${detailId}><formatted-text .text=${question.detail}></formatted-text></div>`}
+         <div class="options">
+           ${question.options.map((option) => html`
+             <label class="option">
+@@ -208,15 +209,15 @@
+       <section class="record-question" aria-labelledby=${this.recordQuestionHeadingId(index)}>
+         <h3 id=${this.recordQuestionHeadingId(index)}>
+           <span class="question-number">${String(index + 1)}.</span>
+-          <span>${record.question.question}</span>
++          <span class="question-copy" dir="auto"><formatted-text .text=${record.question.question}></formatted-text></span>
+         </h3>
+-        ${record.question.detail === undefined ? null : html`<p class="question-detail">${record.question.detail}</p>`}
++        ${record.question.detail === undefined ? null : html`<div class="question-detail" dir="auto"><formatted-text .text=${record.question.detail}></formatted-text></div>`}
+         ${answer === undefined
+           ? html`<p class="unanswered-record">Unanswered</p>`
+           : html`
+               <ul class="record-answers">
+                 ${answer.values.map((value) => html`<li>${this.optionLabel(record.question, value)}</li>`)}
+-                ${answer.otherText === undefined ? null : html`<li><strong>Custom:</strong> <span class="other-record-text">${answer.otherText}</span></li>`}
++                ${answer.otherText === undefined ? null : html`<li><strong>Custom:</strong><div class="other-record-text" dir="auto"><formatted-text .text=${answer.otherText}></formatted-text></div></li>`}
+               </ul>
+               ${answer.fromDraft ? html`<p class="draft-note">Draft answer · not sent</p>` : null}
+             `}
+@@ -447,16 +448,17 @@
+     legend {
+       box-sizing: border-box;
+       width: 100%;
+-      display: grid;
+-      grid-template-columns: var(--question-number-column) minmax(0, 1fr);
+-      align-items: start;
++      display: flex;
++      align-items: baseline;
+       gap: var(--question-copy-gap);
+       color: var(--pi-text);
+       padding: 0;
+       font-weight: 650;
+       line-height: 1.35;
+     }
+-    .question-number { justify-self: end; color: var(--pi-muted); }
++    .question-number { flex: 0 0 var(--question-number-column); color: var(--pi-muted); text-align: right; }
++    .question-copy { flex: 1 1 auto; min-width: 0; }
++    .question-copy formatted-text { display: block; min-width: 0; }
+     fieldset.question.answered .question-number { color: var(--pi-success); }
+     .question-detail {
+       margin: 4px 0 10px;
+@@ -540,7 +542,7 @@
+     .record-questions { display: grid; }
+     .record-question { min-width: 0; padding: 14px 16px; }
+     .record-question + .record-question { border-top: 1px solid var(--pi-border-muted); }
+-    .record-question h3 { display: grid; grid-template-columns: var(--question-number-column) minmax(0, 1fr); align-items: start; gap: var(--question-copy-gap); margin-bottom: 8px; font-size: 14px; line-height: 1.35; }
++    .record-question h3 { display: flex; align-items: baseline; gap: var(--question-copy-gap); margin-bottom: 8px; font-size: 14px; line-height: 1.35; }
+     .record-answers { display: grid; gap: 4px; margin: 0; padding-left: 22px; line-height: 1.4; }
+     .other-record-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+     .unanswered-record { margin: 0; color: var(--pi-muted); font-style: italic; }
+--- a/src/client/src/components/AskUserCard.test.ts
++++ b/src/client/src/components/AskUserCard.test.ts
+@@ -4,6 +4,7 @@
+ import type { AskUserOutcome, AskUserQuestion, PendingAskUser } from "../../../shared/apiTypes";
+ import { saveAskDraft } from "../askDrafts";
+ import { AskUserCard, type AskUserSubmitCallback } from "./AskUserCard";
++import { FormattedText } from "./FormattedText";
+ 
+ afterEach(() => {
+   document.body.replaceChildren();
+@@ -26,9 +27,13 @@
+     const web = inputWithValue(root, "web");
+ 
+     expect(fieldsets).toHaveLength(2);
+-    expect(legends[0]?.textContent).toContain("Choose an editor");
++    const questionMarkdown = legends[0]?.querySelector("formatted-text");
++    expect(questionMarkdown instanceof FormattedText ? questionMarkdown.text : undefined)
++      .toBe("Choose an editor");
+     expect(fieldsets[0]?.getAttribute("aria-describedby")).toBe("ask-user-question-detail-0");
+-    expect(root.querySelector("#ask-user-question-detail-0")?.textContent).toBe("Used for examples.");
++    const detailMarkdown = root.querySelector("#ask-user-question-detail-0 formatted-text");
++    expect(detailMarkdown instanceof FormattedText ? detailMarkdown.text : undefined)
++      .toBe("Used for examples.");
+     expect(vim.type).toBe("radio");
+     expect(code.name).toBe(vim.name);
+     expect(web.type).toBe("checkbox");
+@@ -178,9 +183,13 @@
+     expect(root.querySelector("input, textarea, button, select")).toBeNull();
+     expect(root.textContent).toContain("Superseded");
+     expect(root.textContent).toContain("Fast");
+-    expect(root.textContent).toContain("It keeps the feedback loop short.");
++    const customAnswerMarkdown = root.querySelector(".other-record-text formatted-text");
++    expect(customAnswerMarkdown instanceof FormattedText ? customAnswerMarkdown.text : undefined)
++      .toBe("It keeps the feedback loop short.");
+     expect(root.textContent).toContain("Draft answer · not sent");
+-    expect(root.textContent).toContain("Deployment region");
++    expect([...root.querySelectorAll(".record-question h3 formatted-text")].map((element) =>
++      element instanceof FormattedText ? element.text : undefined))
++      .toContain("Deployment region");
+     expect(root.textContent).toContain("Unanswered");
+   });
+ });
+--- a/src/client/src/components/ChatView.askUser.test.ts
++++ b/src/client/src/components/ChatView.askUser.test.ts
+@@ -3,6 +3,7 @@
+ import { afterEach, describe, expect, it } from "vitest";
+ import type { AskUserOutcome } from "../../../shared/apiTypes";
+ import { AskUserCard } from "./AskUserCard";
++import { FormattedText } from "./FormattedText";
+ import { ChatView } from "./ChatView";
+ 
+ afterEach(() => {
+@@ -73,7 +74,9 @@
+     const cardRoot = requiredElement(card.shadowRoot, "ask_user record shadow root");
+     expect(cardRoot.textContent).toContain("Answers sent");
+     expect(cardRoot.textContent).toContain("Vim");
+-    expect(cardRoot.textContent).toContain("Which region?");
++    expect([...cardRoot.querySelectorAll(".record-question h3 formatted-text")].map((element) =>
++      element instanceof FormattedText ? element.text : undefined))
++      .toContain("Which region?");
+     expect(cardRoot.textContent).toContain("Unanswered");
+     expect(cardRoot.querySelector("input, textarea, button, select")).toBeNull();
+     expect(view.shadowRoot?.querySelector("article.ask-user-record-shell .msg-header")).toBeNull();

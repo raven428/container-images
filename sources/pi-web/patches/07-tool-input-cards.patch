@@ -1,0 +1,447 @@
+--- a/package.json
++++ b/package.json
+@@ -90,6 +90,7 @@
+     "@fastify/compress": "^9.0.0",
+     "@fastify/static": "^10.1.2",
+     "@fastify/websocket": "^11.3.0",
++    "@lezer/highlight": "^1.2.3",
+     "@xterm/addon-fit": "^0.11.0",
+     "@xterm/xterm": "^6.0.0",
+     "diff": "^9.0.0",
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -25,6 +25,7 @@
+         "@fastify/compress": "^9.0.0",
+         "@fastify/static": "^10.1.2",
+         "@fastify/websocket": "^11.3.0",
++        "@lezer/highlight": "^1.2.3",
+         "@xterm/addon-fit": "^0.11.0",
+         "@xterm/xterm": "^6.0.0",
+         "diff": "^9.0.0",
+--- a/src/client/src/components/ToolExecutionView.ts
++++ b/src/client/src/components/ToolExecutionView.ts
+@@ -1,15 +1,36 @@
+ import { LitElement, css, html } from "lit";
+ import { customElement, property, state } from "lit/decorators.js";
+ import { writeClipboardText } from "../clipboard";
++import { toolArgsCardVisible, toolContentCardVisible } from "../chatDisclosureModes";
++import type { CodeHighlightLine } from "../codeHighlight";
++import { languageForPath } from "../codeLanguage";
++import type { CodeLanguage } from "../codeLanguage";
+ import type { ToolExecutionPart } from "./shared";
+ 
+ const MAX_COLLAPSED_DIFF_LINES = 180;
++let codeHighlightModulePromise: Promise<typeof import("../codeHighlight")> | undefined;
+ 
+ interface ToolTarget {
+   label: "Command" | "File" | "Input";
+   text: string;
+ }
+ 
++interface InputCardOptions {
++  label: string;
++  text: string;
++  copyText: string;
++  language: CodeLanguage | undefined;
++  numbered: boolean;
++  open: boolean;
++  showFull: boolean;
++  copied: boolean;
++  fullLabel: string;
++  copyLabel: string;
++  onToggle: (event: Event) => void;
++  onCopy: (value: string) => Promise<void>;
++  onShowAll: () => void;
++}
++
+ @customElement("tool-execution-view")
+ export class ToolExecutionView extends LitElement {
+   @property({ attribute: false }) execution: ToolExecutionPart | undefined;
+@@ -19,7 +40,45 @@
+   @property({ attribute: false }) argsOpen = false;
+   @property({ attribute: false }) contentOpen = true;
+   @state() private showFullDiff = false;
++  @state() private showFullArgs = false;
++  @state() private showFullContent = false;
+   @state() private copied = false;
++  @state() private copiedArgs = false;
++  @state() private copiedContent = false;
++  private codeHighlightModule: typeof import("../codeHighlight") | undefined;
++  private codeHighlightLoadStarted = false;
++  private resultListenersAttached = false;
++  private resultScrollPinned = true;
++  private sawLiveExecution = false;
++
++  override updated(): void {
++    if (!this.resultListenersAttached) {
++      this.renderRoot.addEventListener("scroll", this.onResultScroll, true);
++      this.renderRoot.addEventListener("toggle", this.onResultToggle, true);
++      this.resultListenersAttached = true;
++    }
++    const execution = this.execution;
++    if (execution === undefined) return;
++    const live = execution.status === "pending" || execution.status === "running";
++    if (live) {
++      this.sawLiveExecution = true;
++      if (this.resultScrollPinned) this.scrollResultToBottom();
++      return;
++    }
++    if (this.sawLiveExecution) {
++      if (this.resultScrollPinned) this.scrollResultToBottom();
++      this.sawLiveExecution = false;
++    }
++  }
++
++  override disconnectedCallback(): void {
++    if (this.resultListenersAttached) {
++      this.renderRoot.removeEventListener("scroll", this.onResultScroll, true);
++      this.renderRoot.removeEventListener("toggle", this.onResultToggle, true);
++      this.resultListenersAttached = false;
++    }
++    super.disconnectedCallback();
++  }
+ 
+   override render() {
+     const execution = this.execution;
+@@ -52,6 +111,8 @@
+         ${previewMismatch ? html`<p class="notice">Applied diff differs from the preview.</p>` : null}
+         ${errorText === undefined || errorText === "" ? null : html`<pre class="error-text">${errorText}</pre>`}
+         ${this.renderTargetBody(target)}
++        ${this.renderArgsBody(execution)}
++        ${this.renderContentBody(execution)}
+         ${visibleDiff === undefined ? null : this.renderDiffBody(visibleDiff, actualDiff === undefined ? "Preview diff" : "Applied diff")}
+         ${this.renderResultBody(execution.resultText, execution.status === "error")}
+       </section>
+@@ -84,6 +145,159 @@
+     `;
+   }
+ 
++  private renderArgsBody(execution: ToolExecutionPart) {
++    if (!toolArgsCardVisible(execution)) return null;
++    let serialized: unknown;
++    try {
++      serialized = JSON.stringify(execution.args, null, 2);
++    } catch {
++      return null;
++    }
++    if (typeof serialized !== "string") return null;
++    const text = serialized;
++    return this.renderInputCard({
++      label: "Arguments",
++      text,
++      copyText: text,
++      language: "json",
++      numbered: false,
++      open: this.argsOpen,
++      showFull: this.showFullArgs,
++      copied: this.copiedArgs,
++      fullLabel: "Full JSON",
++      copyLabel: "Copy JSON",
++      onToggle: (event) => { this.onInputToggle("args", event); },
++      onCopy: (value) => this.copyInput("args", value),
++      onShowAll: () => { this.showFullArgs = true; },
++    });
++  }
++
++  private renderContentBody(execution: ToolExecutionPart) {
++    if (!toolContentCardVisible(execution)) return null;
++    const text = getString(execution.args, "content");
++    if (text === undefined) return null;
++    const displayText = text.endsWith("\n") ? text.slice(0, -1) : text;
++    const language = languageForPath(pathFromArgs(execution.args));
++    return this.renderInputCard({
++      label: "Written content",
++      text: displayText,
++      copyText: text,
++      language,
++      numbered: true,
++      open: this.contentOpen,
++      showFull: this.showFullContent,
++      copied: this.copiedContent,
++      fullLabel: "Full content",
++      copyLabel: "Copy content",
++      onToggle: (event) => { this.onInputToggle("content", event); },
++      onCopy: (value) => this.copyInput("content", value),
++      onShowAll: () => { this.showFullContent = true; },
++    });
++  }
++
++  private renderInputCard(options: InputCardOptions) {
++    const {
++      label,
++      text,
++      copyText,
++      language,
++      numbered,
++      open,
++      showFull,
++      copied,
++      fullLabel,
++      copyLabel,
++      onToggle,
++      onCopy,
++      onShowAll,
++    } = options;
++    const lines = text.split("\n");
++    const truncated = !showFull && lines.length > MAX_COLLAPSED_DIFF_LINES;
++    const visibleLines = truncated ? lines.slice(0, MAX_COLLAPSED_DIFF_LINES) : lines;
++    return html`
++      <details class="input-card" ?open=${open} @toggle=${onToggle}>
++        <summary>
++          <span>${label}</span>
++          <small>${String(lines.length)} ${lines.length === 1 ? "line" : "lines"}</small>
++        </summary>
++        <div class="diff-toolbar">
++          <span>${truncated ? `Showing ${String(visibleLines.length)} of ${String(lines.length)} lines` : fullLabel}</span>
++          <button type="button" @click=${() => { void onCopy(copyText); }}>${copied ? "Copied" : copyLabel}</button>
++        </div>
++        <pre class="input-card-pre" aria-label=${label}>${this.renderCodeLines(visibleLines, language, numbered)}</pre>
++        ${truncated ? html`
++          <button class="show-more" type="button" @click=${onShowAll}>
++            Show all ${String(lines.length)} lines
++          </button>
++        ` : null}
++      </details>
++    `;
++  }
++
++  private renderCodeLines(lines: string[], language: CodeLanguage | undefined, numbered: boolean) {
++    if (language !== undefined && this.codeHighlightModule === undefined) this.loadCodeHighlightModule();
++    const highlightedLines: CodeHighlightLine[] = language === undefined || this.codeHighlightModule === undefined
++      ? lines.map((text) => text === "" ? [] : [{ text }])
++      : this.codeHighlightModule.highlightCode(lines.join("\n"), language);
++    if (language !== undefined && this.codeHighlightModule !== undefined) {
++      const root = this.renderRoot;
++      if (root instanceof ShadowRoot) this.codeHighlightModule.installCodeHighlightStyles(root);
++    }
++    const lineCount = highlightedLines.length;
++    const lineNumberDigits = String(lineCount).length;
++    const lineNumberStyle = numbered ? `--line-number-width: ${String(lineNumberDigits)}ch` : "";
++    return html`<code class=${numbered ? "input-code numbered" : "input-code"} style=${lineNumberStyle}>${highlightedLines.map((line, index) => html`<span class="code-line">${numbered ? html`<span class="line-number" aria-hidden="true">${String(index + 1)}</span>` : null}<span class="line-content">${line.map((segment) => segment.className === undefined ? segment.text : html`<span class=${segment.className}>${segment.text}</span>`)}</span></span>`)}</code>`;
++  }
++
++  private loadCodeHighlightModule(): void {
++    if (this.codeHighlightLoadStarted) return;
++    this.codeHighlightLoadStarted = true;
++    codeHighlightModulePromise ??= import("../codeHighlight");
++    void codeHighlightModulePromise.then((module) => {
++      this.codeHighlightModule = module;
++      if (this.isConnected) this.requestUpdate();
++    }).catch(() => { return; });
++  }
++
++  private onInputToggle(kind: "args" | "content", event: Event): void {
++    const details = event.currentTarget;
++    if (!(details instanceof HTMLDetailsElement)) return;
++    if (kind === "args") this.argsOpen = details.open;
++    else this.contentOpen = details.open;
++  }
++
++  private async copyInput(kind: "args" | "content", text: string): Promise<void> {
++    const copied = await writeClipboardText(text);
++    if (kind === "args") this.copiedArgs = copied;
++    else this.copiedContent = copied;
++    if (!copied) return;
++    window.setTimeout(() => {
++      if (kind === "args") this.copiedArgs = false;
++      else this.copiedContent = false;
++    }, 1200);
++  }
++
++  private onResultScroll = (event: Event): void => {
++    const pre = this.renderRoot.querySelector<HTMLPreElement>(".result-body .detail-result pre");
++    if (pre === null || event.target !== pre) return;
++    this.resultScrollPinned = pre.scrollHeight - pre.clientHeight - pre.scrollTop <= 4;
++  };
++
++  private onResultToggle = (event: Event): void => {
++    const details = event.target;
++    if (!(details instanceof HTMLDetailsElement) || !details.matches(".result-body")) return;
++    this.resultOpen = details.open;
++    const execution = this.execution;
++    if (details.open && this.resultScrollPinned && execution !== undefined
++      && (execution.status === "pending" || execution.status === "running")) this.requestUpdate();
++  };
++
++  private scrollResultToBottom(): void {
++    const details = this.renderRoot.querySelector<HTMLDetailsElement>(".result-body");
++    const pre = this.renderRoot.querySelector<HTMLPreElement>(".result-body .detail-result pre");
++    if (details?.open === true && pre !== null) pre.scrollTop = pre.scrollHeight;
++  }
++
+   private renderResultBody(text: string | undefined, isError: boolean) {
+     if (text === undefined || text === "") return null;
+     return html`
+@@ -177,6 +391,18 @@
+     .diff .added { background: color-mix(in srgb, var(--pi-success) 12%, transparent); }
+     .diff .removed { background: color-mix(in srgb, var(--pi-danger) 12%, transparent); }
+     .show-more { justify-self: start; }
++    .input-card { min-width: 0; max-width: 100%; border-top: 1px solid var(--pi-border-muted); padding-top: 6px; }
++    .input-card > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; color: var(--pi-muted); cursor: pointer; }
++    .input-card > summary span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
++    .input-card > summary small { flex: 0 0 auto; color: var(--pi-dim); }
++    .input-card-pre { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; max-height: 50vh; max-height: 50dvh; margin: 6px 0 0; overflow-x: auto; overflow-y: auto; border: 1px solid var(--pi-border-muted); border-radius: 7px; background: var(--pi-bg); padding: 8px; color: var(--pi-text); font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; }
++    .input-code { display: block; width: max-content; min-width: 100%; font: inherit; }
++    .code-line { display: flex; min-height: 1.45em; white-space: pre; }
++    .line-content { flex: 0 0 auto; white-space: pre; }
++    .line-number { box-sizing: border-box; flex: 0 0 var(--line-number-width); width: var(--line-number-width); margin-right: 1em; color: var(--pi-dim); text-align: right; user-select: none; -webkit-user-select: none; }
++    .tool-card .text-body .detail-target-value { max-height: 50vh; max-height: 50dvh; overflow-y: auto; }
++    .tool-card .result-body .detail-result pre { max-height: 50vh; max-height: 50dvh; overflow-y: auto; }
++    .tool-card .diff { max-height: 50vh; max-height: 50dvh; overflow-y: auto; }
+   `;
+ }
+ 
+--- a/src/client/src/components/shared.ts
++++ b/src/client/src/components/shared.ts
+@@ -462,6 +462,7 @@
+   .summary { color: var(--pi-muted); margin-left: 6px; }
+   .part:is(details) { border-top: 1px solid var(--pi-border); padding-top: 8px; }
+   .part > formatted-text { display: block; max-width: 100%; min-width: 0; overflow: visible; }
++  details.part.tool-result > formatted-text { display: block; max-height: 50vh; max-height: 50dvh; overflow-y: auto; }
+   .skill-invocation, .skill-read { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); padding: 8px 10px; }
+   .skill-invocation > summary, .skill-read > strong { color: var(--pi-purple); }
+   .skill-invocation > small, .skill-read > small { display: block; margin: 6px 0 0; color: var(--pi-muted); }
+--- a/src/client/src/codeLanguage.ts
++++ b/src/client/src/codeLanguage.ts
+@@ -0,0 +1,22 @@
++export type CodeLanguage = "typescript" | "javascript" | "json" | "markdown" | "css" | "html" | "python" | "rust" | "go";
++
++export function languageForPath(path: string | undefined): CodeLanguage | undefined {
++  if (path === undefined) return undefined;
++  const ext = path.split(".").pop()?.toLowerCase();
++  const languages: Record<string, CodeLanguage | undefined> = {
++    ts: "typescript",
++    tsx: "typescript",
++    js: "javascript",
++    jsx: "javascript",
++    json: "json",
++    md: "markdown",
++    markdown: "markdown",
++    css: "css",
++    htm: "html",
++    html: "html",
++    py: "python",
++    rs: "rust",
++    go: "go",
++  };
++  return ext === undefined ? undefined : languages[ext];
++}
+--- a/src/client/src/codeHighlight.ts
++++ b/src/client/src/codeHighlight.ts
+@@ -0,0 +1,116 @@
++import { css as cssLang } from "@codemirror/lang-css";
++import { go } from "@codemirror/lang-go";
++import { html as htmlLang } from "@codemirror/lang-html";
++import { javascript } from "@codemirror/lang-javascript";
++import { json } from "@codemirror/lang-json";
++import { markdown } from "@codemirror/lang-markdown";
++import { python } from "@codemirror/lang-python";
++import { rust } from "@codemirror/lang-rust";
++import { defaultHighlightStyle } from "@codemirror/language";
++import { highlightTree } from "@lezer/highlight";
++import type { CodeLanguage } from "./codeLanguage";
++
++export interface CodeHighlightSegment {
++  text: string;
++  className?: string;
++}
++
++export type CodeHighlightLine = CodeHighlightSegment[];
++
++const MAX_HIGHLIGHT_CACHE_ENTRIES = 100;
++const MAX_HIGHLIGHT_TEXT_LENGTH = 500_000;
++const highlightCache = new Map<string, CodeHighlightLine[]>();
++const parsers = {
++  typescript: javascript({ typescript: true }).language.parser,
++  javascript: javascript().language.parser,
++  json: json().language.parser,
++  markdown: markdown().language.parser,
++  css: cssLang().language.parser,
++  html: htmlLang().language.parser,
++  python: python().language.parser,
++  rust: rust().language.parser,
++  go: go().language.parser,
++};
++let sharedStyleSheet: CSSStyleSheet | undefined;
++
++export function highlightCode(text: string, language: CodeLanguage): CodeHighlightLine[] {
++  if (text.length > MAX_HIGHLIGHT_TEXT_LENGTH) return plainCodeLines(text);
++  const key = `${language}\u0000${text}`;
++  const cached = highlightCache.get(key);
++  if (cached !== undefined) return cached;
++  const runs: { from: number; to: number; className: string }[] = [];
++  highlightTree(parsers[language].parse(text), defaultHighlightStyle, (from, to, className) => {
++    runs.push({ from, to, className });
++  });
++  const lines = splitHighlightedLines(text, runs);
++  highlightCache.set(key, lines);
++  if (highlightCache.size > MAX_HIGHLIGHT_CACHE_ENTRIES) {
++    const oldest = highlightCache.keys().next().value;
++    if (oldest !== undefined) highlightCache.delete(oldest);
++  }
++  return lines;
++}
++
++export function installCodeHighlightStyles(root: ShadowRoot): void {
++  if (!("adoptedStyleSheets" in root) || typeof CSSStyleSheet === "undefined") return;
++  try {
++    sharedStyleSheet ??= createHighlightStyleSheet();
++    if (!root.adoptedStyleSheets.includes(sharedStyleSheet)) {
++      root.adoptedStyleSheets = [...root.adoptedStyleSheets, sharedStyleSheet];
++    }
++  } catch {
++    return;
++  }
++}
++
++function createHighlightStyleSheet(): CSSStyleSheet {
++  const sheet = new CSSStyleSheet();
++  sheet.replaceSync(defaultHighlightStyle.module?.getRules() ?? "");
++  return sheet;
++}
++
++function splitHighlightedLines(
++  text: string,
++  runs: readonly { from: number; to: number; className: string }[],
++): CodeHighlightLine[] {
++  const lines: CodeHighlightLine[] = [];
++  let lineStart = 0;
++  let runIndex = 0;
++  while (lineStart <= text.length) {
++    const newline = text.indexOf("\n", lineStart);
++    const lineEnd = newline < 0 ? text.length : newline;
++    const line: CodeHighlightLine = [];
++    let cursor = lineStart;
++    while (runIndex < runs.length && (runs[runIndex]?.to ?? 0) <= lineStart) runIndex++;
++    let currentRun = runIndex;
++    while (currentRun < runs.length) {
++      const run = runs[currentRun];
++      if (run === undefined || run.from >= lineEnd) break;
++      const from = Math.max(cursor, lineStart, run.from);
++      const to = Math.min(lineEnd, run.to);
++      if (from > cursor) appendSegment(line, text.slice(cursor, from));
++      if (to > from) appendSegment(line, text.slice(from, to), run.className);
++      cursor = Math.max(cursor, to);
++      currentRun++;
++    }
++    if (cursor < lineEnd) appendSegment(line, text.slice(cursor, lineEnd));
++    lines.push(line);
++    if (newline < 0) break;
++    lineStart = newline + 1;
++  }
++  return lines;
++}
++
++function appendSegment(line: CodeHighlightLine, text: string, className?: string): void {
++  if (text === "") return;
++  const previous = line[line.length - 1];
++  if (previous !== undefined && previous.className === className) {
++    previous.text += text;
++    return;
++  }
++  line.push(className === undefined ? { text } : { text, className });
++}
++
++function plainCodeLines(text: string): CodeHighlightLine[] {
++  return text.split("\n").map((line) => line === "" ? [] : [{ text: line }]);
++}
