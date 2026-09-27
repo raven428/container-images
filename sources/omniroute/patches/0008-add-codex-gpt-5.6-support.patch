@@ -2,20 +2,44 @@
 +++ b/open-sse/config/codexClient.ts
 @@ -1,4 +1,4 @@
 -const DEFAULT_CODEX_CLIENT_VERSION = "0.132.0";
-+const DEFAULT_CODEX_CLIENT_VERSION = "0.144.0";
++const DEFAULT_CODEX_CLIENT_VERSION = "0.155.0";
  const DEFAULT_CODEX_USER_AGENT_PLATFORM = "Windows 10.0.26200";
  const DEFAULT_CODEX_USER_AGENT_ARCH = "x64";
  const CODEX_VERSION_OVERRIDE_ENV = "CODEX_CLIENT_VERSION";
+--- a/open-sse/config/codexReasoningEffort.ts
++++ b/open-sse/config/codexReasoningEffort.ts
+@@ -0,0 +1,21 @@
++// Codex OAuth base models whose native reasoning ceiling is "max" (above xhigh).
++export const CODEX_MAX_EFFORT_MODELS: ReadonlySet<string> = new Set([
++  "gpt-6-astra",
++  "gpt-6-sol",
++  "gpt-6-luna",
++  "gpt-5.6-sol",
++  "gpt-5.6-terra",
++  "gpt-5.6-luna",
++]);
++
++/**
++ * True when the model (optionally prefixed with codex/ or cx/ and optionally carrying an
++ * effort suffix) is a Codex base model that accepts reasoning effort "max".
++ */
++export function supportsCodexMaxEffort(model: unknown): boolean {
++  if (typeof model !== "string") return false;
++  let base = model.trim().toLowerCase();
++  base = base.replace(/^(?:codex|cx)\//, "");
++  base = base.replace(/(?:-(?:none|low|medium|high|xhigh|max)|\(max\))$/, "");
++  return CODEX_MAX_EFFORT_MODELS.has(base);
++}
 --- a/open-sse/config/providerRegistry.ts
 +++ b/open-sse/config/providerRegistry.ts
-@@ -182,6 +182,19 @@
+@@ -182,6 +182,20 @@
    contextLength: GPT_5_5_CONTEXT_LENGTH,
  } as const;
  
-+// GPT-5.6 codex OAuth backend (sol/terra/luna tiers). OpenAI gates the 5.6
-+// family behind codex-cli >= 0.144.0 (minimal_client_version per openai/codex
-+// models.json) and caps the OAuth context window below the public API 1M.
-+const GPT_5_6_CODEX_CONTEXT_LENGTH = 372000;
++// Shared Codex OAuth capabilities for GPT-5.6 and GPT-6. The live catalog reports
++// max_context_window=872000; context_window=272000 is the billing threshold. GPT-6 requires
++// a recent client (upstream codex-cli 0.153.4+; this image pins 0.155.0).
++const GPT_5_6_CODEX_CONTEXT_LENGTH = 872000;
 +const GPT_5_6_CODEX_CAPABILITIES = {
 +  targetFormat: "openai-responses",
 +  toolCalling: true,
@@ -23,71 +47,276 @@
 +  supportsVision: true,
 +  supportsXHighEffort: true,
 +  contextLength: GPT_5_6_CODEX_CONTEXT_LENGTH,
++  maxOutputTokens: 128000,
 +} as const;
 +
  const CHAT_OPENAI_COMPAT_MODELS: Record<string, RegistryModel[]> = {
    deepinfra: buildModels([
      "anthropic/claude-4-opus",
-@@ -741,6 +754,59 @@
+@@ -741,6 +755,45 @@
        tokenUrl: "https://auth.openai.com/oauth/token",
      },
      models: [
-+      // gpt-5.6 family (Sol/Terra/Luna). Requires codex-cli >= 0.144.0 — the
-+      // pinned DEFAULT_CODEX_CLIENT_VERSION bump lets these through OpenAI's
-+      // backend gate (upstream diegosouzapw/OmniRoute#6778, fix PR #6862).
-+      // Pricing shares the 5.5 flat tier; max_output_tokens stripped server-side.
-+      {
-+        id: "gpt-5.6-sol",
-+        name: "GPT 5.6 Sol",
-+        ...GPT_5_6_CODEX_CAPABILITIES,
-+        contextLength: GPT_5_6_CODEX_CONTEXT_LENGTH,
-+        maxOutputTokens: 128000,
-+      },
-+      {
-+        id: "gpt-5.6-sol-xhigh",
-+        name: "GPT 5.6 Sol (xHigh)",
-+        ...GPT_5_6_CODEX_CAPABILITIES,
-+        contextLength: GPT_5_6_CODEX_CONTEXT_LENGTH,
-+        maxOutputTokens: 128000,
-+      },
-+      {
-+        id: "gpt-5.6-sol-high",
-+        name: "GPT 5.6 Sol (High)",
-+        ...GPT_5_6_CODEX_CAPABILITIES,
-+        contextLength: GPT_5_6_CODEX_CONTEXT_LENGTH,
-+        maxOutputTokens: 128000,
-+      },
-+      {
-+        id: "gpt-5.6-sol-medium",
-+        name: "GPT 5.6 Sol (Medium)",
-+        ...GPT_5_6_CODEX_CAPABILITIES,
-+        contextLength: GPT_5_6_CODEX_CONTEXT_LENGTH,
-+        maxOutputTokens: 128000,
-+      },
-+      {
-+        id: "gpt-5.6-sol-low",
-+        name: "GPT 5.6 Sol (Low)",
-+        ...GPT_5_6_CODEX_CAPABILITIES,
-+        contextLength: GPT_5_6_CODEX_CONTEXT_LENGTH,
-+        maxOutputTokens: 128000,
-+      },
-+      {
-+        id: "gpt-5.6-terra",
-+        name: "GPT 5.6 Terra",
-+        ...GPT_5_6_CODEX_CAPABILITIES,
-+        contextLength: GPT_5_6_CODEX_CONTEXT_LENGTH,
-+        maxOutputTokens: 128000,
-+      },
-+      {
-+        id: "gpt-5.6-luna",
-+        name: "GPT 5.6 Luna",
-+        ...GPT_5_6_CODEX_CAPABILITIES,
-+        contextLength: GPT_5_6_CODEX_CONTEXT_LENGTH,
-+        maxOutputTokens: 128000,
-+      },
++      // GPT-6 (Astra/Sol/Luna) and GPT-5.6 (Sol/Terra/Luna) on Codex OAuth.
++      // Effort suffixes select reasoning; -max is the native ceiling. Client version is pinned
++      // in codexClient.ts. Upstream references: diegosouzapw/OmniRoute#6778, PR #6862.
++      { id: "gpt-6-astra", name: "GPT 6 Astra", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-astra-max", name: "GPT 6 Astra (Max)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-astra-xhigh", name: "GPT 6 Astra (xHigh)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-astra-high", name: "GPT 6 Astra (High)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-astra-medium", name: "GPT 6 Astra (Medium)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-astra-low", name: "GPT 6 Astra (Low)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-sol", name: "GPT 6 Sol", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-sol-max", name: "GPT 6 Sol (Max)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-sol-xhigh", name: "GPT 6 Sol (xHigh)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-sol-high", name: "GPT 6 Sol (High)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-sol-medium", name: "GPT 6 Sol (Medium)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-sol-low", name: "GPT 6 Sol (Low)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-luna", name: "GPT 6 Luna", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-luna-max", name: "GPT 6 Luna (Max)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-luna-xhigh", name: "GPT 6 Luna (xHigh)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-luna-high", name: "GPT 6 Luna (High)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-luna-medium", name: "GPT 6 Luna (Medium)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-6-luna-low", name: "GPT 6 Luna (Low)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-sol", name: "GPT 5.6 Sol", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-sol-max", name: "GPT 5.6 Sol (Max)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-sol-xhigh", name: "GPT 5.6 Sol (xHigh)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-sol-high", name: "GPT 5.6 Sol (High)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-sol-medium", name: "GPT 5.6 Sol (Medium)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-sol-low", name: "GPT 5.6 Sol (Low)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-terra", name: "GPT 5.6 Terra", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-terra-max", name: "GPT 5.6 Terra (Max)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-terra-xhigh", name: "GPT 5.6 Terra (xHigh)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-terra-high", name: "GPT 5.6 Terra (High)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-terra-medium", name: "GPT 5.6 Terra (Medium)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-terra-low", name: "GPT 5.6 Terra (Low)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-luna", name: "GPT 5.6 Luna", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-luna-max", name: "GPT 5.6 Luna (Max)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-luna-xhigh", name: "GPT 5.6 Luna (xHigh)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-luna-high", name: "GPT 5.6 Luna (High)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-luna-medium", name: "GPT 5.6 Luna (Medium)", ...GPT_5_6_CODEX_CAPABILITIES },
++      { id: "gpt-5.6-luna-low", name: "GPT 5.6 Luna (Low)", ...GPT_5_6_CODEX_CAPABILITIES },
        // gpt-5.5 codex OAuth backend caps context at 400K (not the public-API
        // 1.05M). Public refs : openai/codex#19208, #19319, #19464 ;
        // opencode#24171. max_output_tokens is stripped server-side
+--- a/open-sse/executors/base.ts
++++ b/open-sse/executors/base.ts
+@@ -228,7 +228,11 @@
+       "REASONING_SANITIZE",
+       `${provider}/${modelStr}: downgraded reasoning_effort xhigh → high`
+     );
+-    const next: Record<string, unknown> = { ...b, reasoning_effort: "high" };
++    // Codex Responses bodies reject a top-level reasoning_effort field.
++    const next: Record<string, unknown> = { ...b };
++    if (b.reasoning_effort !== undefined) {
++      next.reasoning_effort = "high";
++    }
+     if (reasoning) {
+       next.reasoning = { ...reasoning, effort: "high" };
+     }
+--- a/open-sse/executors/codex.ts
++++ b/open-sse/executors/codex.ts
+@@ -17,6 +17,7 @@
+   getCodexUserAgent,
+   normalizeCodexSessionId,
+ } from "../config/codexClient.ts";
++import { CODEX_MAX_EFFORT_MODELS } from "../config/codexReasoningEffort.ts";
+ import {
+   applyCodexClientIdentityHeaders,
+   applyCodexClientMetadata,
+@@ -251,7 +252,7 @@
+ }
+ 
+ // Ordered list of effort levels from lowest to highest
+-const EFFORT_ORDER = ["none", "low", "medium", "high", "xhigh"] as const;
++const EFFORT_ORDER = ["none", "low", "medium", "high", "xhigh", "max"] as const;
+ type EffortLevel = (typeof EFFORT_ORDER)[number];
+ const CODEX_FAST_WIRE_VALUE = "priority";
+ const CODEX_RESPONSES_WS_URL = "wss://chatgpt.com/backend-api/codex/responses";
+@@ -261,7 +262,14 @@
+   effort: EffortLevel | null;
+ } {
+   const modelId = typeof model === "string" ? model : "";
+-  for (const level of EFFORT_ORDER) {
++  const maxSuffix = modelId.endsWith("-max") ? "-max" : modelId.endsWith("(max)") ? "(max)" : "";
++  if (maxSuffix) {
++    const baseModel = modelId.slice(0, -maxSuffix.length);
++    if (CODEX_MAX_EFFORT_MODELS.has(baseModel)) {
++      return { baseModel, effort: "max" };
++    }
++  }
++  for (const level of ["none", "low", "medium", "high", "xhigh"] as const) {
+     if (modelId.endsWith(`-${level}`)) {
+       return {
+         baseModel: modelId.slice(0, -`-${level}`.length),
+@@ -708,7 +716,7 @@
+ 
+ /**
+  * Maximum reasoning effort allowed per Codex model.
+- * Models not listed here default to "xhigh" (unrestricted).
++ * Unlisted models default to "max" when present in CODEX_MAX_EFFORT_MODELS, otherwise "xhigh".
+  * Update this table when Codex releases new models with different caps.
+  */
+ const MAX_EFFORT_BY_MODEL: Record<string, EffortLevel> = {
+@@ -725,7 +733,8 @@
+  * Returns the original value if within limits, or the cap if it exceeds it.
+  */
+ function clampEffort(model: string, requested: string): string {
+-  const max: EffortLevel = MAX_EFFORT_BY_MODEL[model] ?? "xhigh";
++  const max: EffortLevel =
++    MAX_EFFORT_BY_MODEL[model] ?? (CODEX_MAX_EFFORT_MODELS.has(model) ? "max" : "xhigh");
+   const reqIdx = EFFORT_ORDER.indexOf(requested as EffortLevel);
+   const maxIdx = EFFORT_ORDER.indexOf(max);
+   if (reqIdx > maxIdx) {
+@@ -738,7 +747,7 @@
+ function normalizeEffortValue(value: unknown): string | undefined {
+   if (typeof value !== "string") return undefined;
+   const normalized = value.trim().toLowerCase();
+-  if (normalized === "max") return "xhigh";
++  if (normalized === "ultra") return "max";
+   return normalized || undefined;
+ }
+ 
+--- a/open-sse/handlers/chatCore.ts
++++ b/open-sse/handlers/chatCore.ts
+@@ -23,6 +23,7 @@
+ } from "../services/modelStrip.ts";
+ import { resolveModelAlias } from "../services/modelDeprecation.ts";
+ import { getUnsupportedParams } from "../config/providerRegistry.ts";
++import { supportsCodexMaxEffort } from "../config/codexReasoningEffort.ts";
+ import { supportsMaxTokens } from "@/lib/modelCapabilities.ts";
+ import {
+   buildErrorBody,
+@@ -3008,7 +3009,10 @@
+ 
+   // #1789: Prevent output_config.effort from overriding effort encoded in model name (Codex)
+   if (provider === "codex" || provider?.startsWith("codex")) {
+-    const hasEffortSuffix = finalModelToUpstream.match(/-(low|medium|high|xhigh)$/i);
++    const hasEffortSuffix =
++      /-(low|medium|high|xhigh)$/i.test(finalModelToUpstream) ||
++      (/(?:-max|\(max\))$/i.test(finalModelToUpstream) &&
++        supportsCodexMaxEffort(finalModelToUpstream));
+     if (
+       hasEffortSuffix &&
+       translatedBody.output_config &&
+--- a/open-sse/translator/request/openai-responses.ts
++++ b/open-sse/translator/request/openai-responses.ts
+@@ -6,6 +6,7 @@
+  */
+ import { isOpenAIResponsesStoreEnabled } from "@/lib/providers/requestDefaults";
+ import { FORMATS } from "../formats.ts";
++import { supportsCodexMaxEffort } from "../../config/codexReasoningEffort.ts";
+ import { generateToolCallId } from "../helpers/toolCallHelper.ts";
+ import { register } from "../registry.ts";
+ 
+@@ -24,8 +25,11 @@
+   return typeof value === "string" ? value : fallback;
+ }
+ 
+-function normalizeResponsesReasoningEffort(value: unknown): string {
++function normalizeResponsesReasoningEffort(value: unknown, model: unknown): string {
+   const effort = toString(value).toLowerCase();
++  if (supportsCodexMaxEffort(model)) {
++    return effort === "max" || effort === "ultra" ? "max" : effort;
++  }
+   return effort === "max" ? "xhigh" : effort;
+ }
+ 
+@@ -578,7 +582,7 @@
+   if (root.reasoning !== undefined) {
+     result.reasoning = root.reasoning;
+   } else if (root.reasoning_effort !== undefined) {
+-    const effort = normalizeResponsesReasoningEffort(root.reasoning_effort);
++    const effort = normalizeResponsesReasoningEffort(root.reasoning_effort, model);
+     if (effort) {
+       result.reasoning = { effort };
+     }
+--- a/src/lib/usage/costCalculator.ts
++++ b/src/lib/usage/costCalculator.ts
+@@ -42,7 +42,7 @@
+ }
+ 
+ function stripCodexEffortSuffix(model: string): string {
+-  return model.replace(/-(?:xhigh|high|medium|low|none)$/i, "");
++  return model.replace(/-(?:max|xhigh|high|medium|low|none)$/i, "");
+ }
+ 
+ export function getCodexFastCostMultiplier(
+@@ -61,6 +61,13 @@
+ 
+   const modelKey = stripCodexEffortSuffix(normalizeModelName(String(model || "")).toLowerCase());
+   const compactModelKey = modelKey.replace(/-/g, "");
++  // GPT-6 Codex Fast is 2.5x Standard credits: https://developers.openai.com/codex/pricing
++  if (
++    /^gpt-6-(?:astra|sol|luna)$/.test(modelKey) ||
++    /^gpt6(?:astra|sol|luna)$/.test(compactModelKey)
++  ) {
++    return 2.5;
++  }
+   if (modelKey === "gpt-5.5" || compactModelKey === "gpt5.5") return 2.5;
+   if (modelKey === "gpt-5.4" || compactModelKey === "gpt5.4") return 2;
+   return 1;
+--- a/src/shared/constants/pricing.ts
++++ b/src/shared/constants/pricing.ts
+@@ -19,6 +19,32 @@
+   cache_creation: 5.0,
+ };
+ 
++// Codex Standard credits per MTok at 25 credits = 1 USD; rates above 272K are not modeled.
++// https://developers.openai.com/codex/pricing
++const GPT_6_ASTRA_CODEX_PRICING = {
++  input: 10.0,
++  output: 50.0,
++  cached: 1.0,
++  reasoning: 50.0,
++  cache_creation: 12.5,
++};
++
++const GPT_6_SOL_CODEX_PRICING = {
++  input: 2.0,
++  output: 10.0,
++  cached: 0.2,
++  reasoning: 10.0,
++  cache_creation: 2.5,
++};
++
++const GPT_6_LUNA_CODEX_PRICING = {
++  input: 0.1,
++  output: 0.5,
++  cached: 0.01,
++  reasoning: 0.5,
++  cache_creation: 0.125,
++};
++
+ const CLAUDE_OPUS_4_PRICING = {
+   input: 15.0,
+   output: 75.0,
+@@ -176,6 +202,25 @@
+   // OpenAI Codex (cx)
+   cx: {
+     "codex-auto-review": GPT_5_5_PRICING,
++    // GPT 6
++    "gpt-6-astra": GPT_6_ASTRA_CODEX_PRICING,
++    "gpt-6-astra-max": GPT_6_ASTRA_CODEX_PRICING,
++    "gpt-6-astra-xhigh": GPT_6_ASTRA_CODEX_PRICING,
++    "gpt-6-astra-high": GPT_6_ASTRA_CODEX_PRICING,
++    "gpt-6-astra-medium": GPT_6_ASTRA_CODEX_PRICING,
++    "gpt-6-astra-low": GPT_6_ASTRA_CODEX_PRICING,
++    "gpt-6-sol": GPT_6_SOL_CODEX_PRICING,
++    "gpt-6-sol-max": GPT_6_SOL_CODEX_PRICING,
++    "gpt-6-sol-xhigh": GPT_6_SOL_CODEX_PRICING,
++    "gpt-6-sol-high": GPT_6_SOL_CODEX_PRICING,
++    "gpt-6-sol-medium": GPT_6_SOL_CODEX_PRICING,
++    "gpt-6-sol-low": GPT_6_SOL_CODEX_PRICING,
++    "gpt-6-luna": GPT_6_LUNA_CODEX_PRICING,
++    "gpt-6-luna-max": GPT_6_LUNA_CODEX_PRICING,
++    "gpt-6-luna-xhigh": GPT_6_LUNA_CODEX_PRICING,
++    "gpt-6-luna-high": GPT_6_LUNA_CODEX_PRICING,
++    "gpt-6-luna-medium": GPT_6_LUNA_CODEX_PRICING,
++    "gpt-6-luna-low": GPT_6_LUNA_CODEX_PRICING,
+     // GPT 5.5
+     "gpt-5.5": GPT_5_5_PRICING,
+     "gpt5.5": GPT_5_5_PRICING,
 --- a/tests/unit/executor-codex.test.ts
 +++ b/tests/unit/executor-codex.test.ts
 @@ -159,7 +159,7 @@
@@ -95,7 +324,7 @@
    assert.equal(standardHeaders["Openai-Beta"], "responses=experimental");
    assert.equal(standardHeaders["X-Codex-Beta-Features"], "responses_websockets");
 -  assert.equal(standardHeaders["User-Agent"], "codex-cli/0.132.0 (Windows 10.0.26200; x64)");
-+  assert.equal(standardHeaders["User-Agent"], "codex-cli/0.144.0 (Windows 10.0.26200; x64)");
++  assert.equal(standardHeaders["User-Agent"], "codex-cli/0.155.0 (Windows 10.0.26200; x64)");
    assert.equal(compactHeaders.Accept, "application/json");
  });
  
@@ -104,7 +333,7 @@
      () => {
        const headers = executor.buildHeaders({ accessToken: "codex-token" }, true);
 -      assert.equal(headers.Version, "0.132.0");
-+      assert.equal(headers.Version, "0.144.0");
++      assert.equal(headers.Version, "0.155.0");
        assert.equal(headers["User-Agent"], "custom-codex/9.9.9");
      }
    );
@@ -115,7 +344,7 @@
    assert.equal(codex.headers["Openai-Beta"], "responses=experimental");
    assert.equal(codex.headers["X-Codex-Beta-Features"], "responses_websockets");
 -  assert.equal(codex.headers["User-Agent"], "codex-cli/0.132.0 (Windows 10.0.26200; x64)");
-+  assert.equal(codex.headers["User-Agent"], "codex-cli/0.144.0 (Windows 10.0.26200; x64)");
++  assert.equal(codex.headers["User-Agent"], "codex-cli/0.155.0 (Windows 10.0.26200; x64)");
    assert.ok(codex.models.some((model) => model.id === "gpt-5.5-medium"));
    assert.ok(!codex.models.some((model) => model.id === "codex-auto-review"));
  });
