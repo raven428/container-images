@@ -11,21 +11,16 @@ trim_trailing_whitespace = true
 [*.go]
 indent_style = tab
 
-[{*.md,*.crl,*.gpg,*.json}]
-max_line_length = unset
+[_shared/install/ansible/style]
+max_line_length = 144
 
 [_shared/install/ansible/configure.sh]
 max_line_length = 222
 
-[_shared/install/ansible/style]
-max_line_length = 144
-
-[**/Dockerfile]
-max_line_length = 222
-
-[_shared/install/openwrt/*.diff]
-indent_style = ''
+[{**.{md,crl,gpg,json},**/Dockerfile,sources/*/patches/**}]
+indent_style = unset
 max_line_length = unset
+trim_trailing_whitespace = unset
 
 [{sources/texlive-myminimal/files/install.sh,_shared/install/ansible/build-appimage.sh}]
 max_line_length = 99
