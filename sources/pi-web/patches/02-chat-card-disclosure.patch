@@ -47,7 +47,7 @@
 +- `last`: the last card of that kind in the loaded transcript, independent of session activity.
 +- `all`: always open. This is the default for `toolDiff` and `toolContent`.
 +
-+An empty or missing `ui.disclosure` reproduces the pre-existing UI behavior exactly. For `toolArgs` and `toolContent`, `live` and `last` target the last tool execution in the loaded transcript that actually renders the corresponding card. The `Result` card stays open regardless of mode when the tool execution errored; it now renders alongside a diff too, where the result text used to be hidden entirely. The `Details` card is not force-opened on error, since the error text lives in `Result`. A user can still collapse any card by clicking it in any mode.
++An empty or missing `ui.disclosure` reproduces the pre-existing UI behavior exactly. For `toolArgs` and `toolContent`, `live` and `last` target the last tool execution in the loaded transcript that actually renders the corresponding card. The `Result` card stays open regardless of mode when the tool execution errored; it now renders alongside a diff too, where the result text used to be hidden entirely. Error text is no longer duplicated in a separate block above the cards. While an `edit` preview is live and has failed, `Result` shows that preview error and stays open until the final result replaces it. The `Details` card is not force-opened on error, since the error text lives in `Result`. A user can still collapse any card by clicking it in any mode.
 +
 +```json
 +{
@@ -531,22 +531,26 @@
  
    override render() {
      const execution = this.execution;
-@@ -28,7 +32,6 @@
+@@ -27,8 +31,8 @@
+     const visibleDiff = actualDiff ?? preview?.diff;
      const diffStats = visibleDiff === undefined ? undefined : countDiffLines(visibleDiff);
      const previewMismatch = actualDiff !== undefined && preview?.diff !== undefined && actualDiff !== preview.diff;
-     const errorText = execution.status === "error" ? execution.resultText : preview?.error;
+-    const errorText = execution.status === "error" ? execution.resultText : preview?.error;
 -    const bodyText = visibleDiff === undefined ? execution.resultText : undefined;
++    const isLive = execution.status === "pending" || execution.status === "running";
++    const previewError = isLive && preview?.error !== undefined && preview.error !== "" ? preview.error : undefined;
      const target = toolTarget(execution, path);
  
      return html`
-@@ -48,7 +51,9 @@
+@@ -47,8 +51,9 @@
+         </div>
  
          ${previewMismatch ? html`<p class="notice">Applied diff differs from the preview.</p>` : null}
-         ${errorText === undefined || errorText === "" ? null : html`<pre class="error-text">${errorText}</pre>`}
+-        ${errorText === undefined || errorText === "" ? null : html`<pre class="error-text">${errorText}</pre>`}
 -        ${visibleDiff === undefined ? this.renderTextBody(bodyText, execution.status === "error", target) : this.renderDiffBody(visibleDiff, actualDiff === undefined ? "Preview diff" : "Applied diff", target)}
 +        ${this.renderTargetBody(target)}
 +        ${visibleDiff === undefined ? null : this.renderDiffBody(visibleDiff, actualDiff === undefined ? "Preview diff" : "Applied diff")}
-+        ${this.renderResultBody(execution.resultText, execution.status === "error")}
++        ${this.renderResultBody(previewError ?? execution.resultText, execution.status === "error" || previewError !== undefined)}
        </section>
      `;
    }
@@ -596,10 +600,11 @@
          <div class="diff-toolbar">
            <span>${truncated ? `Showing ${String(visibleLines.length)} of ${String(lines.length)} lines` : "Full diff"}</span>
            <button type="button" @click=${() => { void this.copyDiff(diff); }}>${this.copied ? "Copied" : "Copy diff"}</button>
-@@ -145,10 +153,10 @@
+@@ -144,11 +152,10 @@
+     .status-label { text-transform: uppercase; letter-spacing: .04em; color: var(--pi-muted); }
      .notice { margin: 0; color: var(--pi-warning); }
      .muted { margin: 0; color: var(--pi-muted); }
-     .error-text { margin: 0; border: 1px solid var(--pi-danger); border-radius: 7px; background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); color: var(--pi-danger); padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+-    .error-text { margin: 0; border: 1px solid var(--pi-danger); border-radius: 7px; background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); color: var(--pi-danger); padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 -    .text-body { border-top: 1px solid var(--pi-border-muted); padding-top: 6px; }
 +    .text-body, .result-body { border-top: 1px solid var(--pi-border-muted); padding-top: 6px; }
      .detail-target, .detail-result { display: grid; gap: 4px; margin-top: 8px; min-width: 0; }
