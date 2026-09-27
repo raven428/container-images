@@ -15,14 +15,14 @@ set -ueo pipefail
 }
 if [[ -z "${PUSHING:-}" ]]; then
   stage_shared_assets
-  /usr/bin/env cat "sources/${TAG}/_shared/files/async-check.diff" |
+  /usr/bin/env cat "sources/${TAG}/_shared/files/async-check.patch" |
     /usr/bin/env awk \
       '/^--- .+site-packages\/ansible\/plugins\/action\/__init__/ { exit } { print }' |
     /usr/bin/env sed -rz \
       's/\x0d\x0a/\x0a/g; s/\x0d/\x0a/g; s/[ \t]+\x0a/\x0a/g; s/\x0a*$/\x0a/g' \
-      >"sources/${TAG}/_shared/files/async-check-new.diff"
-  /usr/bin/env mv -fv "sources/${TAG}/_shared/files/async-check-new.diff" \
-    "sources/${TAG}/_shared/files/async-check.diff"
+      >"sources/${TAG}/_shared/files/async-check-new.patch"
+  /usr/bin/env mv -fv "sources/${TAG}/_shared/files/async-check-new.patch" \
+    "sources/${TAG}/_shared/files/async-check.patch"
   # shellcheck disable=2034
   BUILD_CONTEXT_DIR="sources/${TAG}/_shared"
   # shellcheck disable=2034

@@ -16,5 +16,5 @@ ANSIBLE_VERSION="${TAG#ansible-}"
 cleanup_python_packages "${env_dir}"
 
 # Apply patches
-apply_flush_line_patch "${env_dir}" "/files/flush-line.diff" "${ANSIBLE_VERSION}"
-apply_async_check_patch "${env_dir}" "/files/async-check.diff" "${ANSIBLE_VERSION}"
+apply_flush_line_patch "${env_dir}" "/files/flush-line.patch" "${ANSIBLE_VERSION}"
+apply_async_check_patch "${env_dir}" "/files/async-check.patch" "${ANSIBLE_VERSION}"

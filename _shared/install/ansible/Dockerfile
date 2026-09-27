@@ -3,8 +3,8 @@ FROM localhost/ansible-builder:local AS build
 ARG TAG
 ENV TAG=${TAG}
 COPY files/requirements.txt /files/requirements.txt
-COPY files/flush-line.diff /files/flush-line.diff
-COPY files/async-check.diff /files/async-check.diff
+COPY files/flush-line.patch /files/flush-line.patch
+COPY files/async-check.patch /files/async-check.patch
 COPY files/build.sh /files/build.sh
 RUN /files/build.sh
 

@@ -93,9 +93,9 @@ EOF
 ansible-*)
   ANSIBLE_VERSION="${TAG#ansible-}"
   apply_flush_line_patch \
-    "$APPDIR" "${PATCH_DIR}/flush-line.diff" "${ANSIBLE_VERSION}"
+    "$APPDIR" "${PATCH_DIR}/flush-line.patch" "${ANSIBLE_VERSION}"
   apply_async_check_patch \
-    "$APPDIR" "${PATCH_DIR}/async-check.diff" "${ANSIBLE_VERSION}"
+    "$APPDIR" "${PATCH_DIR}/async-check.patch" "${ANSIBLE_VERSION}"
   cd "$APPDIR"
   # shellcheck disable=2016
   _DEFAULT_BIN='${HERE}/bin/python'

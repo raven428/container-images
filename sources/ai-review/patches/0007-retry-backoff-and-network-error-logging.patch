@@ -23,7 +23,7 @@
 +# Backoff schedule: delay grows by STEP_DELAY every 3 attempts, capped at
 +# CAP_DELAY.  After 3 consecutive cap-level attempts the cycle resets to
 +# INITIAL_DELAY.  This mirrors the algorithm from
-+# opencode-ctrl/patches/common/retry-overload-cap.diff.
++# opencode-ctrl/patches/common/retry-overload-cap.patch.
 +_INITIAL_DELAY = 1.0   # seconds
 +_STEP_DELAY = 1.0      # seconds added per 3-attempt block
 +_CAP_DELAY = 11.0      # seconds — maximum single-attempt wait
@@ -45,8 +45,8 @@
 @@ -1,4 +1,4 @@
 -from pydantic import BaseModel, HttpUrl, SecretStr, FilePath
 +from pydantic import BaseModel, Field, HttpUrl, SecretStr, FilePath
- 
- 
+
+
  class HTTPClientConfig(BaseModel):
 @@ -6,6 +6,9 @@
      timeout: float = 120
@@ -55,7 +55,7 @@
 +    # Total wall-clock seconds the retry/backoff loop may spend waiting
 +    # before giving up on a failed request.  Set to 0 to disable retries.
 +    max_retries_time: float = Field(default=60.0, ge=0)
- 
+
      @property
      def api_url_value(self) -> str:
 --- a/ai_review/libs/http/client.py
@@ -64,13 +64,13 @@
 +import asyncio
  from typing import Any
  from collections.abc import AsyncIterator
- 
+
  from httpx import AsyncClient, Headers, Response, QueryParams
  from httpx._types import HeaderTypes, RequestContent
- 
+
 +from ai_review.libs.http.backoff import backoff_delay
 +from ai_review.libs.http.network import is_network_error, network_error_message
- 
+
 -class HTTPClient:
 -    def __init__(self, client: AsyncClient) -> None:
 -        self.client = client
@@ -179,7 +179,7 @@
 +    attempt = 0
 +    waited = 0.0
 +    yielded = False
- 
+
 +    while True:
 +      try:
          async with self.client.stream(
@@ -235,17 +235,17 @@
  import asyncio
 -from http import HTTPStatus
  from typing import TYPE_CHECKING
- 
+
  from httpx import Request, Response, AsyncBaseTransport
- 
+
 +from ai_review.libs.http.backoff import backoff_delay
 +from ai_review.libs.http.network import is_network_error, network_error_message
 +
  if TYPE_CHECKING:
 -    from loguru import Logger
 +  from loguru import Logger
- 
- 
+
+
  class RetryTransport(AsyncBaseTransport):
 -    def __init__(
 -            self,
@@ -338,7 +338,7 @@
 +          f'Error on attempt {attempt + 1} for {ref}, '
 +          f'retrying in {delay:.1f}s: {type(error).__name__}: {error}'
          )
- 
+
 -        return last_response
 +      await asyncio.sleep(delay)
 +      waited += delay
@@ -353,12 +353,12 @@
 +        ),
 +        max_retries_time=settings.llm.http_client.max_retries_time,
      )
- 
+
      client = AsyncClient(
 @@ -59,4 +60,7 @@
          }
      )
- 
+
 -    return OpenAIV1HTTPClient(client=client)
 +    return OpenAIV1HTTPClient(
 +        client=client,
@@ -374,12 +374,12 @@
 +        ),
 +        max_retries_time=settings.llm.http_client.max_retries_time,
      )
- 
+
      client = AsyncClient(
 @@ -62,4 +63,7 @@
          }
      )
- 
+
 -    return OpenAIV2HTTPClient(client=client)
 +    return OpenAIV2HTTPClient(
 +        client=client,
@@ -395,7 +395,7 @@
 +        ),
 +        max_retries_time=settings.llm.http_client.max_retries_time,
      )
- 
+
      client = AsyncClient(
 @@ -61,4 +62,7 @@
              "response": [logger_event_hook.response],
@@ -416,12 +416,12 @@
 +        ),
 +        max_retries_time=settings.llm.http_client.max_retries_time,
      )
- 
+
      client = AsyncClient(
 @@ -64,4 +65,7 @@
          },
      )
- 
+
 -    return GeminiHTTPClient(client=client)
 +    return GeminiHTTPClient(
 +        client=client,
@@ -437,7 +437,7 @@
 +        ),
 +        max_retries_time=settings.llm.http_client.max_retries_time,
      )
- 
+
      client = AsyncClient(
 @@ -57,4 +58,7 @@
              "response": [logger_event_hook.response],
@@ -458,12 +458,12 @@
 +        ),
 +        max_retries_time=settings.llm.http_client.max_retries_time,
      )
- 
+
      headers = {"Authorization": f"Bearer {settings.llm.http_client.api_token_value}"}
 @@ -66,4 +67,7 @@
          },
      )
- 
+
 -    return OpenRouterHTTPClient(client=client)
 +    return OpenRouterHTTPClient(
 +        client=client,
@@ -477,12 +477,12 @@
          ),
 +        max_retries_time=settings.llm.http_client.max_retries_time,
      )
- 
+
      client = AsyncClient(
 @@ -75,4 +76,7 @@
          },
      )
- 
+
 -    return AzureOpenAIHTTPClient(client=client)
 +    return AzureOpenAIHTTPClient(
 +        client=client,
@@ -498,12 +498,12 @@
 +        ),
 +        max_retries_time=settings.llm.http_client.max_retries_time,
      )
- 
+
      client = AsyncClient(
 @@ -75,4 +76,7 @@
          },
      )
- 
+
 -    return BedrockHTTPClient(client=client)
 +    return BedrockHTTPClient(
 +        client=client,
@@ -519,7 +519,7 @@
 +        ),
 +        max_retries_time=settings.vcs.http_client.max_retries_time,
      )
- 
+
      client = AsyncClient(
 --- a/ai_review/clients/github/client.py
 +++ b/ai_review/clients/github/client.py
@@ -531,7 +531,7 @@
 +        ),
 +        max_retries_time=settings.vcs.http_client.max_retries_time,
      )
- 
+
      client = AsyncClient(
 --- a/ai_review/clients/gitea/client.py
 +++ b/ai_review/clients/gitea/client.py
@@ -543,7 +543,7 @@
 +        ),
 +        max_retries_time=settings.vcs.http_client.max_retries_time,
      )
- 
+
      client = AsyncClient(
 --- a/ai_review/clients/azure_devops/client.py
 +++ b/ai_review/clients/azure_devops/client.py
@@ -555,7 +555,7 @@
 +        ),
 +        max_retries_time=settings.vcs.http_client.max_retries_time,
      )
- 
+
      client = AsyncClient(
 --- a/ai_review/clients/bitbucket_cloud/client.py
 +++ b/ai_review/clients/bitbucket_cloud/client.py
@@ -567,7 +567,7 @@
 +        ),
 +        max_retries_time=settings.vcs.http_client.max_retries_time,
      )
- 
+
      client = AsyncClient(
 --- a/ai_review/clients/bitbucket_server/client.py
 +++ b/ai_review/clients/bitbucket_server/client.py
@@ -579,20 +579,20 @@
 +        ),
 +        max_retries_time=settings.vcs.http_client.max_retries_time,
      )
- 
+
      client = AsyncClient(
 --- a/ai_review/services/review/gateway/review_direct_llm_gateway.py
 +++ b/ai_review/services/review/gateway/review_direct_llm_gateway.py
 @@ -3,6 +3,7 @@
  from collections.abc import AsyncIterator
- 
+
  from ai_review.config import settings
 +from ai_review.libs.http.network import is_network_error, network_error_message
  from ai_review.libs.llm.stream_logger import StreamSegmentLogger
  from ai_review.libs.logger import get_logger
  from ai_review.services.artifacts.types import ArtifactsServiceProtocol
 @@ -64,7 +65,10 @@
- 
+
              return result.text
          except Exception as error:
 -            logger.exception(f"LLM request failed: {error}")
@@ -601,7 +601,7 @@
 +            else:
 +                logger.exception(f"LLM request failed: {error}")
              await hook.emit_chat_error(prompt, prompt_system)
- 
+
      async def ask_stream(self, prompt: str, prompt_system: str) -> AsyncIterator[str]:
 @@ -177,5 +181,8 @@
                  prompt_system=prompt_system,
@@ -617,7 +617,7 @@
 +++ b/ai_review/services/review/gateway/review_agent_llm_gateway.py
 @@ -1,5 +1,6 @@
  from collections.abc import AsyncIterator
- 
+
 +from ai_review.libs.http.network import is_network_error, network_error_message
  from ai_review.libs.logger import get_logger
  from ai_review.services.agent.loop.types import AgentLoopServiceProtocol
@@ -636,7 +636,7 @@
 +                logger.exception(f"Agent mode failed, falling back to direct chat: {error}")
              await hook.emit_chat_error(prompt, prompt_system)
              return await self.fallback_gateway.ask(prompt, prompt_system)
- 
+
 @@ -89,7 +96,13 @@
                  prompt_system=prompt_system,
              )
@@ -678,10 +678,10 @@
 +                    f"Failed to fetch PR info {self.owner}/{self.repo}#{self.pull_number}: {error}"
 +                )
              return ReviewInfoSchema()
- 
+
      # --- Comments ---
 @@ -94,7 +100,10 @@
- 
+
              return [get_review_comment_from_github_issue_comment(comment) for comment in response.root]
          except Exception as error:
 -            logger.exception(f"Failed to fetch general comments for {self.pull_request_ref}: {error}")
@@ -690,10 +690,10 @@
 +            else:
 +                logger.exception(f"Failed to fetch general comments for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def get_inline_comments(self) -> list[ReviewCommentSchema]:
 @@ -108,7 +117,10 @@
- 
+
              return [get_review_comment_from_github_pr_comment(comment) for comment in response.root]
          except Exception as error:
 -            logger.exception(f"Failed to fetch inline comments for {self.pull_request_ref}: {error}")
@@ -702,7 +702,7 @@
 +            else:
 +                logger.exception(f"Failed to fetch inline comments for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def create_general_comment(self, message: str) -> None:
 @@ -122,7 +134,10 @@
              )
@@ -714,7 +714,7 @@
 +            else:
 +                logger.exception(f"Failed to create general comment in PR {self.pull_request_ref}: {error}")
              raise
- 
+
      async def create_inline_comment(self, file: str, line: int, message: str) -> None:
 @@ -147,7 +162,10 @@
              )
@@ -726,7 +726,7 @@
 +            else:
 +                logger.exception(f"Failed to create inline comment in {self.pull_request_ref} at {file}:{line}: {error}")
              raise
- 
+
      async def delete_general_comment(self, comment_id: int | str) -> None:
 @@ -160,7 +178,10 @@
              )
@@ -738,7 +738,7 @@
 +            else:
 +                logger.exception(f"Failed to delete general comment {comment_id=} in PR {self.pull_request_ref}: {error}")
              raise
- 
+
      async def delete_inline_comment(self, comment_id: int | str) -> None:
 @@ -173,9 +194,14 @@
              )
@@ -756,7 +756,7 @@
 +                    f"Failed to delete inline review comment {comment_id=} in PR {self.pull_request_ref}: {error}"
 +                )
              raise
- 
+
      # --- Replies ---
 @@ -194,9 +220,14 @@
              )
@@ -774,7 +774,7 @@
 +                    f"Failed to create inline reply to comment {thread_id=} in {self.pull_request_ref}: {error}"
 +                )
              raise
- 
+
      async def create_summary_reply(self, thread_id: int | str, message: str) -> None:
 @@ -208,9 +239,14 @@
              logger.info(f"Replying to general comment {thread_id=} in PR {self.pull_request_ref}")
@@ -792,7 +792,7 @@
 +                    f"Failed to create summary reply to comment {thread_id=} in {self.pull_request_ref}: {error}"
 +                )
              raise
- 
+
      # --- Threads ---
 @@ -242,7 +278,10 @@
                  for thread_id, thread in threads.items()
@@ -804,7 +804,7 @@
 +            else:
 +                logger.exception(f"Failed to fetch inline threads for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def get_general_threads(self) -> list[ReviewThreadSchema]:
 @@ -256,5 +295,8 @@
              logger.info(f"Built {len(threads)} general threads for {self.pull_request_ref}")
@@ -836,7 +836,7 @@
 +            else:
 +                logger.exception(f"Failed to fetch MR info for {self.merge_request_ref}: {error}")
              return ReviewInfoSchema()
- 
+
      # --- Comments ---
 @@ -89,7 +93,10 @@
                  for note in response.root
@@ -848,7 +848,7 @@
 +            else:
 +                logger.exception(f"Failed to fetch general comments {self.merge_request_ref}: {error}")
              return []
- 
+
      async def get_inline_comments(self) -> list[ReviewCommentSchema]:
 @@ -106,7 +113,10 @@
                  for note in discussion.notes
@@ -860,7 +860,7 @@
 +            else:
 +                logger.exception(f"Failed to fetch inline discussions {self.merge_request_ref}: {error}")
              return []
- 
+
      async def create_general_comment(self, message: str) -> None:
 @@ -119,7 +129,10 @@
              )
@@ -872,7 +872,7 @@
 +            else:
 +                logger.exception(f"Failed to create general comment in {self.merge_request_ref}: {error}")
              raise
- 
+
      async def create_inline_comment(self, file: str, line: int, message: str) -> None:
 @@ -149,7 +162,10 @@
              )
@@ -884,7 +884,7 @@
 +            else:
 +                logger.exception(f"Failed to create inline comment in {self.merge_request_ref} at {file}:{line}: {error}")
              raise
- 
+
      async def delete_general_comment(self, comment_id: int | str) -> None:
 @@ -162,7 +178,10 @@
              )
@@ -896,7 +896,7 @@
 +            else:
 +                logger.exception(f"Failed to delete general comment {comment_id=} in MR {self.merge_request_ref}: {error}")
              raise
- 
+
      async def delete_inline_comment(self, comment_id: int | str) -> None:
 @@ -175,9 +194,14 @@
              )
@@ -914,7 +914,7 @@
 +                    f"Failed to delete inline comment {comment_id=} in MR {self.merge_request_ref}: {error}"
 +                )
              raise
- 
+
      # --- Replies ---
 @@ -194,9 +218,14 @@
                  f"Created inline reply to discussion {thread_id=} in MR {self.merge_request_ref}"
@@ -932,7 +932,7 @@
 +                    f"Failed to create inline reply to discussion {thread_id=} in MR {self.merge_request_ref}: {error}"
 +                )
              raise
- 
+
      async def create_summary_reply(self, thread_id: int | str, message: str) -> None:
 @@ -204,9 +233,14 @@
              logger.info(f"Replying to general comment {thread_id=} in MR {self.merge_request_ref}")
@@ -950,7 +950,7 @@
 +                    f"Failed to reply to general comment {thread_id=} in MR {self.merge_request_ref}: {error}"
 +                )
              raise
- 
+
      async def get_inline_threads(self) -> list[ReviewThreadSchema]:
 @@ -245,7 +279,10 @@
              logger.info(f"Built {len(threads)} inline threads for MR {self.merge_request_ref}")
@@ -962,7 +962,7 @@
 +            else:
 +                logger.exception(f"Failed to fetch inline threads for MR {self.merge_request_ref}: {error}")
              return []
- 
+
      async def get_general_threads(self) -> list[ReviewThreadSchema]:
 @@ -259,5 +296,8 @@
              logger.info(f"Built {len(threads)} general threads for MR {self.merge_request_ref}")
@@ -994,10 +994,10 @@
 +            else:
 +                logger.exception(f"Failed to fetch PR info {self.pull_request_ref}: {error}")
              return ReviewInfoSchema()
- 
+
      # --- Comments ---
 @@ -71,7 +75,10 @@
- 
+
              return [get_review_comment_from_gitea_comment(comment) for comment in response.root]
          except Exception as error:
 -            logger.exception(f"Failed to fetch comments for {self.pull_request_ref}: {error}")
@@ -1006,7 +1006,7 @@
 +            else:
 +                logger.exception(f"Failed to fetch comments for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def get_inline_comments(self) -> list[ReviewCommentSchema]:
 @@ -103,7 +110,10 @@
              logger.info(f"Fetched {len(result)} inline review comments for {self.pull_request_ref}")
@@ -1018,7 +1018,7 @@
 +            else:
 +                logger.exception(f"Failed to fetch inline comments for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def create_general_comment(self, message: str) -> None:
 @@ -118,7 +128,10 @@
              )
@@ -1030,10 +1030,10 @@
 +            else:
 +                logger.exception(f"Failed to create general comment in PR {self.pull_request_ref}: {error}")
              raise
- 
+
      async def create_inline_comment(self, file: str, line: int, message: str) -> None:
 @@ -144,7 +157,10 @@
- 
+
              logger.info(f"Created inline comment in {self.pull_request_ref} at {file}:{line}")
          except Exception as error:
 -            logger.exception(f"Failed to create inline comment in {self.pull_request_ref} at {file}:{line}: {error}")
@@ -1042,7 +1042,7 @@
 +            else:
 +                logger.exception(f"Failed to create inline comment in {self.pull_request_ref} at {file}:{line}: {error}")
              raise
- 
+
      async def delete_general_comment(self, comment_id: int | str) -> None:
 @@ -157,7 +173,10 @@
              )
@@ -1054,7 +1054,7 @@
 +            else:
 +                logger.exception(f"Failed to delete general comment {comment_id=} in PR {self.pull_request_ref}: {error}")
              raise
- 
+
      async def delete_inline_comment(self, comment_id: int | str) -> None:
 @@ -171,9 +190,14 @@
              )
@@ -1072,7 +1072,7 @@
 +                    f"Failed to delete review {comment_id=} in PR {self.pull_request_ref}: {error}"
 +                )
              raise
- 
+
      # --- Replies ---
 @@ -199,7 +223,10 @@
                  for comment in comments
@@ -1084,7 +1084,7 @@
 +            else:
 +                logger.exception(f"Failed to build inline threads for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def get_general_threads(self) -> list[ReviewThreadSchema]:
 @@ -214,5 +241,8 @@
                  for comment in comments
@@ -1108,7 +1108,7 @@
  from ai_review.services.vcs.types import (
 @@ -91,9 +92,14 @@
              )
- 
+
          except Exception as error:
 -            logger.exception(
 -                f"Failed to fetch PR info {self.pull_request_ref}: {error}"
@@ -1122,11 +1122,11 @@
 +                    f"Failed to fetch PR info {self.pull_request_ref}: {error}"
 +                )
              return ReviewInfoSchema()
- 
+
      # --- Comments ---
 @@ -119,7 +125,10 @@
              return comments
- 
+
          except Exception as error:
 -            logger.exception(f"Failed to fetch general comments for {self.pull_request_ref}: {error}")
 +            if is_network_error(error):
@@ -1134,11 +1134,11 @@
 +            else:
 +                logger.exception(f"Failed to fetch general comments for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def get_inline_comments(self) -> list[ReviewCommentSchema]:
 @@ -144,7 +153,10 @@
              return comments
- 
+
          except Exception as error:
 -            logger.exception(f"Failed to fetch inline comments for {self.pull_request_ref}: {error}")
 +            if is_network_error(error):
@@ -1146,11 +1146,11 @@
 +            else:
 +                logger.exception(f"Failed to fetch inline comments for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def create_general_comment(self, message: str) -> None:
 @@ -166,7 +178,10 @@
              logger.info(f"Created general comment in PR {self.pull_request_ref}")
- 
+
          except Exception as error:
 -            logger.exception(f"Failed to create general comment in {self.pull_request_ref}: {error}")
 +            if is_network_error(error):
@@ -1158,11 +1158,11 @@
 +            else:
 +                logger.exception(f"Failed to create general comment in {self.pull_request_ref}: {error}")
              raise
- 
+
      async def create_inline_comment(self, file: str, line: int, message: str) -> None:
 @@ -220,7 +235,10 @@
              logger.info(f"Created inline comment in {self.pull_request_ref} at {file}:{line}")
- 
+
          except Exception as error:
 -            logger.exception(f"Failed to create inline comment in {self.pull_request_ref} at {file}:{line}: {error}")
 +            if is_network_error(error):
@@ -1170,7 +1170,7 @@
 +            else:
 +                logger.exception(f"Failed to create inline comment in {self.pull_request_ref} at {file}:{line}: {error}")
              raise
- 
+
      async def delete_general_comment(self, comment_id: int | str) -> None:
 @@ -235,7 +253,10 @@
              )
@@ -1182,7 +1182,7 @@
 +            else:
 +                logger.exception(f"Failed to delete general comment {comment_id=} in PR {self.pull_request_ref}: {error}")
              raise
- 
+
      async def delete_inline_comment(self, comment_id: int | str) -> None:
 @@ -250,7 +271,10 @@
              )
@@ -1194,11 +1194,11 @@
 +            else:
 +                logger.exception(f"Failed to delete inline comment {comment_id=} in PR {self.pull_request_ref}: {error}")
              raise
- 
+
      # --- Replies ---
 @@ -272,9 +296,14 @@
              logger.info(f"Created inline reply in thread {thread_id=} for {self.pull_request_ref}")
- 
+
          except Exception as error:
 -            logger.exception(
 -                f"Failed to create inline reply in thread {thread_id=} for {self.pull_request_ref}: {error}"
@@ -1212,7 +1212,7 @@
 +                    f"Failed to create inline reply in thread {thread_id=} for {self.pull_request_ref}: {error}"
 +                )
              raise
- 
+
      async def create_summary_reply(self, thread_id: int | str, message: str) -> None:
 @@ -282,9 +311,14 @@
              logger.info(f"Replying to general comment {thread_id=} in PR {self.pull_request_ref}")
@@ -1230,11 +1230,11 @@
 +                    f"Failed to create summary reply to comment {thread_id=} in {self.pull_request_ref}: {error}"
 +                )
              raise
- 
+
      # --- Threads ---
 @@ -328,7 +362,10 @@
              return review_threads
- 
+
          except Exception as error:
 -            logger.exception(f"Failed to fetch inline threads for {self.pull_request_ref}: {error}")
 +            if is_network_error(error):
@@ -1242,11 +1242,11 @@
 +            else:
 +                logger.exception(f"Failed to fetch inline threads for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def get_general_threads(self) -> list[ReviewThreadSchema]:
 @@ -366,5 +403,8 @@
              return review_threads
- 
+
          except Exception as error:
 -            logger.exception(f"Failed to build general threads for {self.pull_request_ref}: {error}")
 +            if is_network_error(error):
@@ -1274,7 +1274,7 @@
 +            else:
 +                logger.exception(f"Failed to fetch PR info {self.pull_request_ref}: {error}")
              return ReviewInfoSchema()
- 
+
      # --- Comments ---
 @@ -108,7 +112,10 @@
                  if comment.inline is None
@@ -1286,7 +1286,7 @@
 +            else:
 +                logger.exception(f"Failed to fetch general comments for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def get_inline_comments(self) -> list[ReviewCommentSchema]:
 @@ -126,7 +133,10 @@
                  if comment.inline is not None
@@ -1298,7 +1298,7 @@
 +            else:
 +                logger.exception(f"Failed to fetch inline comments for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def create_general_comment(self, message: str) -> None:
 @@ -143,7 +153,10 @@
              )
@@ -1310,7 +1310,7 @@
 +            else:
 +                logger.exception(f"Failed to create general comment in PR {self.pull_request_ref}: {error}")
              raise
- 
+
      async def create_inline_comment(self, file: str, line: int, message: str) -> None:
 @@ -161,7 +174,10 @@
              )
@@ -1322,7 +1322,7 @@
 +            else:
 +                logger.exception(f"Failed to create inline comment in {self.pull_request_ref} at {file}:{line}: {error}")
              raise
- 
+
      async def delete_general_comment(self, comment_id: int | str) -> None:
 @@ -175,7 +191,10 @@
              )
@@ -1334,7 +1334,7 @@
 +            else:
 +                logger.exception(f"Failed to delete general comment {comment_id=} in PR {self.pull_request_ref}: {error}")
              raise
- 
+
      async def delete_inline_comment(self, comment_id: int | str) -> None:
 @@ -189,7 +208,10 @@
              )
@@ -1346,7 +1346,7 @@
 +            else:
 +                logger.exception(f"Failed to delete inline comment {comment_id=} in PR {self.pull_request_ref}: {error}")
              raise
- 
+
      # --- Replies ---
 @@ -208,9 +230,14 @@
              )
@@ -1364,7 +1364,7 @@
 +                    f"Failed to create inline reply to thread {thread_id=} in PR {self.pull_request_ref}: {error}"
 +                )
              raise
- 
+
      async def create_summary_reply(self, thread_id: int | str, message: str) -> None:
 @@ -228,9 +255,14 @@
              )
@@ -1382,10 +1382,10 @@
 +                    f"Failed to create summary reply to thread {thread_id=} in PR {self.pull_request_ref}: {error}"
 +                )
              raise
- 
+
      # --- Threads ---
 @@ -266,7 +298,10 @@
- 
+
              return threads
          except Exception as error:
 -            logger.exception(f"Failed to fetch inline threads for {self.pull_request_ref}: {error}")
@@ -1394,7 +1394,7 @@
 +            else:
 +                logger.exception(f"Failed to fetch inline threads for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def get_general_threads(self) -> list[ReviewThreadSchema]:
 @@ -288,5 +323,8 @@
                  for thread_id, thread in threads.items()
@@ -1426,7 +1426,7 @@
 +            else:
 +                logger.exception(f"Failed to fetch PR info {self.pull_request_ref}: {error}")
              return ReviewInfoSchema()
- 
+
      # --- Comments ---
 @@ -103,7 +107,10 @@
                  if comment.anchor is None
@@ -1438,7 +1438,7 @@
 +            else:
 +                logger.exception(f"Failed to fetch general comments for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def get_inline_comments(self) -> list[ReviewCommentSchema]:
 @@ -122,7 +129,10 @@
                  if comment.anchor is not None and comment.anchor.path is not None
@@ -1450,11 +1450,11 @@
 +            else:
 +                logger.exception(f"Failed to fetch inline comments for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def create_general_comment(self, message: str) -> None:
 @@ -141,7 +151,10 @@
              logger.info(f"Created general comment in PR {self.pull_request_ref}")
- 
+
          except Exception as error:
 -            logger.exception(f"Failed to create general comment in PR {self.pull_request_ref}: {error}")
 +            if is_network_error(error):
@@ -1462,11 +1462,11 @@
 +            else:
 +                logger.exception(f"Failed to create general comment in PR {self.pull_request_ref}: {error}")
              raise
- 
+
      async def create_inline_comment(self, file: str, line: int, message: str) -> None:
 @@ -161,9 +174,14 @@
              logger.info(f"Created inline comment in {self.pull_request_ref} at {file}:{line}")
- 
+
          except Exception as error:
 -            logger.exception(
 -                f"Failed to create inline comment in {self.pull_request_ref} at {file}:{line}: {error}"
@@ -1480,7 +1480,7 @@
 +                    f"Failed to create inline comment in {self.pull_request_ref} at {file}:{line}: {error}"
 +                )
              raise
- 
+
      async def delete_general_comment(self, comment_id: int | str) -> None:
 @@ -177,7 +195,10 @@
              )
@@ -1492,7 +1492,7 @@
 +            else:
 +                logger.exception(f"Failed to delete general comment {comment_id=} in PR {self.pull_request_ref}: {error}")
              raise
- 
+
      async def delete_inline_comment(self, comment_id: int | str) -> None:
 @@ -191,7 +212,10 @@
              )
@@ -1504,7 +1504,7 @@
 +            else:
 +                logger.exception(f"Failed to delete inline comment {comment_id=} in PR {self.pull_request_ref}: {error}")
              raise
- 
+
      # --- Replies ---
 @@ -210,9 +234,14 @@
              )
@@ -1522,7 +1522,7 @@
 +                    f"Failed to create inline reply to thread {thread_id=} in PR {self.pull_request_ref}: {error}"
 +                )
              raise
- 
+
      async def create_summary_reply(self, thread_id: int | str, message: str) -> None:
 @@ -230,9 +259,14 @@
              )
@@ -1540,11 +1540,11 @@
 +                    f"Failed to create summary reply to thread {thread_id=} in PR {self.pull_request_ref}: {error}"
 +                )
              raise
- 
+
      # --- Threads ---
 @@ -268,7 +302,10 @@
              return threads
- 
+
          except Exception as error:
 -            logger.exception(f"Failed to fetch inline threads for {self.pull_request_ref}: {error}")
 +            if is_network_error(error):
@@ -1552,11 +1552,11 @@
 +            else:
 +                logger.exception(f"Failed to fetch inline threads for {self.pull_request_ref}: {error}")
              return []
- 
+
      async def get_general_threads(self) -> list[ReviewThreadSchema]:
 @@ -291,5 +328,8 @@
              ]
- 
+
          except Exception as error:
 -            logger.exception(f"Failed to fetch general threads for {self.pull_request_ref}: {error}")
 +            if is_network_error(error):

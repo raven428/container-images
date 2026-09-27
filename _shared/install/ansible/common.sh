@@ -17,16 +17,16 @@ apply_flush_line_patch() {
   local python_root="$1"
   local patch_file="$2"
   local ansible_version="$3"
-  # ansible-06 doesn't use flush-line.diff
+  # ansible-06 doesn't use flush-line.patch
   if [[ "${ansible_version}" == "06" ]]; then
-    echo "Skipping flush-line.diff for ansible-06 (not needed)"
+    echo "Skipping flush-line.patch for ansible-06 (not needed)"
     return
   fi
   if [[ ! -f "${patch_file}" ]]; then
-    echo "Warning: flush-line.diff not found at ${patch_file}, skipping"
+    echo "Warning: flush-line.patch not found at ${patch_file}, skipping"
     return
   fi
-  echo "Applying flush-line.diff patch…"
+  echo "Applying flush-line.patch patch…"
   # shellcheck disable=2164
   cd "${python_root}"
   patch -p0 <"${patch_file}"
@@ -162,14 +162,14 @@ apply_async_check_patch() {
   local python_root="$1"
   local patch_file="$2"
   local ansible_version="$3"
-  # async-check.diff only for ansible-06, 07, 08, 09
+  # async-check.patch only for ansible-06, 07, 08, 09
   case "${ansible_version}" in
   06 | 07 | 08 | 09)
     if [[ ! -f "${patch_file}" ]]; then
-      echo "Warning: async-check.diff not found at ${patch_file}, skipping"
+      echo "Warning: async-check.patch not found at ${patch_file}, skipping"
       return
     fi
-    echo "Applying async-check.diff patch for ansible-${ansible_version}…"
+    echo "Applying async-check.patch patch for ansible-${ansible_version}…"
     # shellcheck disable=2164
     cd "${python_root}"
     if [[ "${ansible_version}" == "06" ]]; then
@@ -187,7 +187,7 @@ apply_async_check_patch() {
     fi
     ;;
   *)
-    echo "Skipping async-check.diff for ansible-${ansible_version} (not needed)"
+    echo "Skipping async-check.patch for ansible-${ansible_version} (not needed)"
     ;;
   esac
 }
