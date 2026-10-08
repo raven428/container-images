@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cspell:ignore totcount
+# cspell:ignore totcount latexmk
 set -ueo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
@@ -23,7 +23,7 @@ if [[ "$_repo_set" == false ]]; then
   exit 1
 fi
 tlmgr update --all
-tlmgr install xetex sourceserifpro sourcesanspro polyglossia fontspec \
+tlmgr install latexmk xetex sourceserifpro sourcesanspro polyglossia fontspec \
   koma-script graphics geometry soul infwarerr etexcmds enumitem xstring roboto \
   extsizes lipsum supertabular cellspace nopageno multirow numprint numspell \
   numnameru datetime2 pgf oberdiek ltxcmds tools hyphen-russian hyperref \
