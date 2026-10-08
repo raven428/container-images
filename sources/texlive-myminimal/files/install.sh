@@ -40,6 +40,7 @@ tlmgr path add
   )" /etc/fonts/conf.d/09-texlive-fonts.conf ||
     true
 )
+install -m 0644 /files/99-source-pro-otf.conf /etc/fonts/conf.d/99-source-pro-otf.conf
 fc-cache -fsv
 if [ -f "/usr/bin/context" ]; then
   mtxrun --generate
