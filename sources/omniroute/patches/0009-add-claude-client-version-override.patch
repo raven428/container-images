@@ -1,0 +1,546 @@
+--- a/.env.example
++++ b/.env.example
+@@ -466,6 +466,9 @@
+ # Can also be overridden via data/provider-credentials.json where supported.
+ 
+ # ── Claude Code (Anthropic) ──
++# Runtime version override for native Claude OAuth and CC-compatible bridges.
++# Default: 2.1.181. CLAUDE_CODE_VERSION is not an environment variable.
++# CLAUDE_CODE_CLIENT_VERSION=2.1.181
+ CLAUDE_OAUTH_CLIENT_ID=9d1c250a-e61b-44d9-88ed-5944d1962f5e
+ # Custom redirect URI override for Claude OAuth callback.
+ # CLAUDE_CODE_REDIRECT_URI=https://platform.claude.com/oauth/code/callback
+--- a/src/shared/constants/claudeCodeClient.ts
++++ b/src/shared/constants/claudeCodeClient.ts
+@@ -0,0 +1,25 @@
++/**
++ * Backport of the upstream #12417 runtime Claude Code version override.
++ * Keep this leaf dependency-free so native and bridge identities share a pin.
++ * SDK versions and billing suffix algorithms remain those of OmniRoute v3.8.1.
++ */
++export const CLAUDE_CODE_CLIENT_VERSION = '2.1.181';
++export type ClaudeCodeEntrypoint = 'cli' | 'sdk-cli';
++const CLAUDE_VERSION_OVERRIDE_ENV = 'CLAUDE_CODE_CLIENT_VERSION';
++const SAFE_HEADER_TOKEN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
++function getSafeEnvValue(name: string, pattern: RegExp): string | null {
++  const raw = typeof process === 'undefined' ? undefined : process.env?.[name];
++  if (typeof raw !== 'string') return null;
++  const normalized = raw.trim();
++  if (!normalized || !pattern.test(normalized)) return null;
++  return normalized;
++}
++export function getClaudeCodeClientVersion(): string {
++  return (
++    getSafeEnvValue(CLAUDE_VERSION_OVERRIDE_ENV, SAFE_HEADER_TOKEN_PATTERN) ||
++    CLAUDE_CODE_CLIENT_VERSION
++  );
++}
++export function getClaudeCodeUserAgent(entrypoint: ClaudeCodeEntrypoint): string {
++  return `claude-cli/${getClaudeCodeClientVersion()} (external, ${entrypoint})`;
++}
+--- a/open-sse/executors/claudeIdentity.ts
++++ b/open-sse/executors/claudeIdentity.ts
+@@ -9,10 +9,17 @@
+  */
+ 
+ import { createHash, randomBytes, randomUUID } from "node:crypto";
++import {
++  CLAUDE_CODE_CLIENT_VERSION,
++  getClaudeCodeClientVersion,
++} from '@/shared/constants/claudeCodeClient';
+ 
+ // ---------- Versions ------------------------------------------------------
+ 
+-export const CLAUDE_CODE_VERSION = "2.1.131";
++export const CLAUDE_CODE_VERSION = CLAUDE_CODE_CLIENT_VERSION;
++export function getClaudeCodeVersion(): string {
++  return getClaudeCodeClientVersion();
++}
+ /** Bundled @anthropic-ai/sdk version for the pinned CLI release. */
+ export const CLAUDE_CODE_STAINLESS_VERSION = "0.81.0";
+ 
+@@ -151,7 +158,7 @@
+       headers: {
+         Authorization: `Bearer ${accessToken}`,
+         Accept: "application/json",
+-        "User-Agent": `claude-cli/${CLAUDE_CODE_VERSION} (external, cli)`,
++        "User-Agent": `claude-cli/${getClaudeCodeVersion()} (external, cli)`,
+         "anthropic-beta": "oauth-2025-04-20",
+       },
+       signal: ctrl.signal,
+--- a/open-sse/executors/base.ts
++++ b/open-sse/executors/base.ts
+@@ -18,7 +18,13 @@
+ import { getClaudeCodeCompatibleRequestDefaults } from "@/lib/providers/requestDefaults";
+ import { remapToolNamesInRequest } from "../services/claudeCodeToolRemapper.ts";
+ import { obfuscateInBody } from "../services/claudeCodeObfuscation.ts";
+-import { applySystemTransformPipeline, PROVIDER_CLAUDE } from "../services/systemTransforms.ts";
++import {
++  applySystemTransformPipeline,
++  getSystemTransformsConfig,
++  PROVIDER_CLAUDE,
++  PROVIDER_CC_BRIDGE,
++} from '../services/systemTransforms.ts';
++import { applyCcBridgeTransformPipeline } from '../services/ccBridgeTransforms.ts';
+ import {
+   fixToolPairs,
+   fixToolAdjacency,
+@@ -26,7 +32,7 @@
+ } from "../services/contextManager.ts";
+ import { randomUUID } from "node:crypto";
+ import {
+-  CLAUDE_CODE_VERSION,
++  getClaudeCodeVersion,
+   CLAUDE_CODE_STAINLESS_VERSION,
+   buildHashFor,
+   buildUserIdJson,
+@@ -784,8 +790,9 @@
+           // system[0] (billing) and system[1] (sentinel) must not carry
+           // cache_control — that belongs on upstream prompt blocks at [2..].
+           const dayStamp = new Date().toISOString().slice(0, 10);
+-          const buildHash = buildHashFor(CLAUDE_CODE_VERSION, dayStamp);
+-          const billingLine = `x-anthropic-billing-header: cc_version=${CLAUDE_CODE_VERSION}.${buildHash}; cc_entrypoint=cli; cch=00000;`;
++          const claudeCodeVersion = getClaudeCodeVersion();
++          const buildHash = buildHashFor(claudeCodeVersion, dayStamp);
++          const billingLine = `x-anthropic-billing-header: cc_version=${claudeCodeVersion}.${buildHash}; cc_entrypoint=cli; cch=00000;`;
+           const SENTINEL = "You are Claude Code, Anthropic's official CLI for Claude.";
+ 
+           const sysBlocks: Array<Record<string, unknown>> = Array.isArray(tb.system)
+@@ -845,7 +852,7 @@
+             "anthropic-beta": selectBetaFlags(tb, model, extendedContext === true),
+             "anthropic-dangerous-direct-browser-access": "true",
+             "x-app": "cli",
+-            "User-Agent": `claude-cli/${CLAUDE_CODE_VERSION} (external, cli)`,
++            "User-Agent": `claude-cli/${claudeCodeVersion} (external, cli)`,
+             "X-Stainless-Package-Version": CLAUDE_CODE_STAINLESS_VERSION,
+             "X-Stainless-Timeout": "600",
+             "accept-encoding": "gzip, deflate, br, zstd",
+@@ -915,6 +922,22 @@
+             tb.messages = stripTrailingAssistantOrphanToolUse(adjacent);
+           }
+         }
++        // The chat handler uses the unsigned bridge builder. Apply only billing
++        // ops here; leave unrelated prompt transformations outside this backport.
++        if (
++          isClaudeCodeCompatible(this.provider) &&
++          typeof transformedBody === 'object' &&
++          transformedBody !== null
++        ) {
++          const providers = getSystemTransformsConfig().providers;
++          const bridgeConfig = providers[this.provider] || providers[PROVIDER_CC_BRIDGE];
++          if (bridgeConfig) {
++            applyCcBridgeTransformPipeline(transformedBody as Record<string, unknown>, {
++              enabled: bridgeConfig.enabled,
++              pipeline: bridgeConfig.pipeline.filter((op) => op.kind === 'inject_billing_header'),
++            });
++          }
++        }
+         let bodyString = JSON.stringify(transformedBody);
+ 
+         const shouldFingerprint =
+--- a/open-sse/services/claudeCodeCompatible.ts
++++ b/open-sse/services/claudeCodeCompatible.ts
+@@ -1,4 +1,8 @@
+ import { createHash, randomUUID } from "node:crypto";
++import {
++  CLAUDE_CODE_CLIENT_VERSION,
++  getClaudeCodeUserAgent,
++} from '@/shared/constants/claudeCodeClient';
+ 
+ import { getStainlessTimeoutSeconds } from "@/shared/utils/runtimeTimeouts";
+ import { ANTHROPIC_VERSION_HEADER } from "../config/anthropicHeaders.ts";
+@@ -39,8 +43,9 @@
+   "interleaved-thinking-2025-05-14",
+   "effort-2025-11-24",
+ ].join(",");
+-export const CLAUDE_CODE_COMPATIBLE_VERSION = "2.1.137";
+-export const CLAUDE_CODE_COMPATIBLE_USER_AGENT = "claude-cli/2.1.137 (external, sdk-cli)";
++export const CLAUDE_CODE_COMPATIBLE_VERSION = CLAUDE_CODE_CLIENT_VERSION;
++export const CLAUDE_CODE_COMPATIBLE_USER_AGENT =
++  `claude-cli/${CLAUDE_CODE_CLIENT_VERSION} (external, sdk-cli)`;
+ export const CLAUDE_CODE_COMPATIBLE_STAINLESS_PACKAGE_VERSION = "0.81.0";
+ export const CLAUDE_CODE_COMPATIBLE_STAINLESS_RUNTIME_VERSION = "v24.3.0";
+ export const CONTEXT_1M_BETA_HEADER = "context-1m-2025-08-07";
+@@ -183,7 +188,7 @@
+     "anthropic-beta": CLAUDE_CODE_COMPATIBLE_ANTHROPIC_BETA,
+     "anthropic-dangerous-direct-browser-access": "true",
+     "x-app": "cli",
+-    "User-Agent": CLAUDE_CODE_COMPATIBLE_USER_AGENT,
++    "User-Agent": getClaudeCodeUserAgent('sdk-cli'),
+     "X-Stainless-Retry-Count": "0",
+     "X-Stainless-Timeout": String(CLAUDE_CODE_COMPATIBLE_STAINLESS_TIMEOUT_SECONDS),
+     "X-Stainless-Lang": "js",
+--- a/open-sse/services/ccBridgeTransforms.ts
++++ b/open-sse/services/ccBridgeTransforms.ts
+@@ -20,6 +20,10 @@
+  * Related: OmniRoute issue #2260.
+  */
+ import { createHash } from "node:crypto";
++import {
++  CLAUDE_CODE_CLIENT_VERSION,
++  getClaudeCodeClientVersion,
++} from '@/shared/constants/claudeCodeClient';
+ 
+ // ────────────────────────────────────────────────────────────────────────────
+ // DSL types
+@@ -96,7 +100,7 @@
+    *   - static-zero: emit "00000" (relay endpoints don't validate)
+    */
+   cchAlgo: "sha256-first-user" | "xxhash64-body" | "static-zero";
+-  /** Override the embedded `cc_version=` value. Defaults to `2.1.137`. */
++  /** Override `cc_version=`; otherwise use the runtime client version. */
+   version?: string;
+ }
+ 
+@@ -114,7 +118,10 @@
+ /** Character positions sampled from the first user message text. */
+ export const CCH_POSITIONS = [4, 7, 20] as const;
+ /** Default `cc_version=` value embedded in the billing header. */
+-export const DEFAULT_CLAUDE_CODE_VERSION = "2.1.137";
++export const DEFAULT_CLAUDE_CODE_VERSION = CLAUDE_CODE_CLIENT_VERSION;
++export function getDefaultClaudeCodeVersion(): string {
++  return getClaudeCodeClientVersion();
++}
+ /** Identity sentinel prepended for Claude Agent SDK callers. */
+ export const CLAUDE_AGENT_SDK_IDENTITY =
+   "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
+@@ -283,7 +290,7 @@
+   messages: Message[],
+   options: BuildBillingHeaderOptions
+ ): string {
+-  const version = options.version || DEFAULT_CLAUDE_CODE_VERSION;
++  const version = options.version || getDefaultClaudeCodeVersion();
+   const firstUserText = extractFirstUserMessageText(messages);
+ 
+   const suffix =
+--- a/open-sse/services/usage.ts
++++ b/open-sse/services/usage.ts
+@@ -36,7 +36,7 @@
+   updateAntigravityRemainingCredits,
+ } from "../executors/antigravity.ts";
+ import { getCreditsMode } from "./antigravityCredits.ts";
+-import { CLAUDE_CODE_VERSION, fetchClaudeBootstrap } from "../executors/claudeIdentity.ts";
++import { getClaudeCodeVersion, fetchClaudeBootstrap } from "../executors/claudeIdentity.ts";
+ import { generateAntigravityRequestId, getAntigravitySessionId } from "./antigravityIdentity.ts";
+ 
+ // Antigravity API config (credentials from PROVIDERS via credential loader)
+@@ -1989,7 +1989,7 @@
+           "Accept-Encoding": "gzip, compress, deflate, br",
+           Authorization: `Bearer ${accessToken}`,
+           "Content-Type": "application/json",
+-          "User-Agent": `claude-code/${CLAUDE_CODE_VERSION}`,
++          "User-Agent": `claude-code/${getClaudeCodeVersion()}`,
+           "anthropic-beta": "oauth-2025-04-20",
+         },
+         signal: ctrl.signal,
+--- a/src/lib/oauth/providers/claude.ts
++++ b/src/lib/oauth/providers/claude.ts
+@@ -1,6 +1,6 @@
+ import crypto from "node:crypto";
+ import { CLAUDE_CONFIG } from "../constants/oauth";
+-import { CLAUDE_CODE_VERSION } from "@omniroute/open-sse/executors/claudeIdentity.ts";
++import { getClaudeCodeVersion } from "@omniroute/open-sse/executors/claudeIdentity.ts";
+ 
+ const BOOTSTRAP_FETCH_TIMEOUT_MS = 10_000;
+ 
+@@ -14,7 +14,7 @@
+       headers: {
+         Authorization: `Bearer ${accessToken}`,
+         Accept: "application/json",
+-        "User-Agent": `claude-cli/${CLAUDE_CODE_VERSION} (external, cli)`,
++        "User-Agent": `claude-cli/${getClaudeCodeVersion()} (external, cli)`,
+         "anthropic-beta": "oauth-2025-04-20",
+       },
+       signal: ctrl.signal,
+--- a/tests/unit/cc-bridge-transforms.test.ts
++++ b/tests/unit/cc-bridge-transforms.test.ts
+@@ -322,7 +322,7 @@
+   });
+   assert.match(
+     value,
+-    /^x-anthropic-billing-header: cc_version=2\.1\.137\.[0-9a-f]{3}; cc_entrypoint=sdk-cli; cch=[0-9a-f]{5};$/
++    /^x-anthropic-billing-header: cc_version=2\.1\.181\.[0-9a-f]{3}; cc_entrypoint=sdk-cli; cch=[0-9a-f]{5};$/
+   );
+ });
+ 
+--- a/tests/unit/chatcore-translation-paths.test.ts
++++ b/tests/unit/chatcore-translation-paths.test.ts
+@@ -599,8 +599,9 @@
+   assert.equal(call.headers.Accept ?? call.headers.accept, "application/json");
+   assert.equal(call.body.stream, true);
+   assert.equal(call.body.context_management, undefined);
+-  assert.equal(call.body.system.length, 1);
+-  assert.match(call.body.system[0].text, /Claude Agent SDK/);
++  assert.equal(call.body.system.length, 2);
++  assert.match(call.body.system[0].text, /cc_version=2\.1\.181\.[0-9a-f]{3};/);
++  assert.match(call.body.system[1].text, /Claude Agent SDK/);
+   assert.equal(typeof call.body.metadata.user_id, "string");
+   assert.equal(call.body.messages[0].role, "user");
+   assert.equal(call.body.messages[0].content[0].text, "Ping");
+@@ -754,7 +755,7 @@
+   assert.equal(call.body.stream, true);
+   assert.deepEqual(call.body.messages, clientMessages);
+   assert.equal(
+-    call.body.system[0].text,
++    call.body.system[1].text,
+     "You are a Claude agent, built on Anthropic's Claude Agent SDK."
+   );
+   assert.equal(
+--- a/tests/unit/claude-client-version-override.test.ts
++++ b/tests/unit/claude-client-version-override.test.ts
+@@ -0,0 +1,255 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import {
++  CLAUDE_CODE_CLIENT_VERSION,
++  getClaudeCodeClientVersion,
++  getClaudeCodeUserAgent,
++} from '../../src/shared/constants/claudeCodeClient.ts';
++import {
++  CLAUDE_CODE_VERSION,
++  getClaudeCodeVersion,
++  fetchClaudeBootstrap,
++  buildHashFor,
++} from '../../open-sse/executors/claudeIdentity.ts';
++import {
++  CLAUDE_CODE_COMPATIBLE_VERSION,
++  CLAUDE_CODE_COMPATIBLE_USER_AGENT,
++  buildClaudeCodeCompatibleHeaders,
++  buildClaudeCodeCompatibleRequest,
++} from '../../open-sse/services/claudeCodeCompatible.ts';
++import {
++  DEFAULT_CLAUDE_CODE_VERSION,
++  getDefaultClaudeCodeVersion,
++  buildBillingHeaderValue,
++  computeDaystampVersionSuffix,
++} from '../../open-sse/services/ccBridgeTransforms.ts';
++// Adapted from upstream tests/unit/cli-client-version-env-12417.test.ts.
++async function withEnv<T>(
++  entries: Record<string, string | undefined>,
++  fn: () => T | Promise<T>
++): Promise<T> {
++  const previous = new Map<string, string | undefined>();
++  for (const [key, value] of Object.entries(entries)) {
++    previous.set(key, process.env[key]);
++    if (value === undefined) delete process.env[key];
++    else process.env[key] = value;
++  }
++  try {
++    return await fn();
++  } finally {
++    for (const [key, value] of previous.entries()) {
++      if (value === undefined) delete process.env[key];
++      else process.env[key] = value;
++    }
++  }
++}
++const billingOptions = {
++  entrypoint: 'sdk-cli',
++  versionFormat: 'omniroute-daystamp' as const,
++  cchAlgo: 'xxhash64-body' as const,
++  now: new Date('2026-01-02T12:00:00Z'),
++};
++const messages = [{ role: 'user', content: 'hello' }];
++test('native and bridge pins default to 2.1.181', async () => {
++  assert.equal(CLAUDE_CODE_CLIENT_VERSION, '2.1.181');
++  assert.equal(CLAUDE_CODE_VERSION, CLAUDE_CODE_CLIENT_VERSION);
++  assert.equal(CLAUDE_CODE_COMPATIBLE_VERSION, CLAUDE_CODE_CLIENT_VERSION);
++  assert.equal(DEFAULT_CLAUDE_CODE_VERSION, CLAUDE_CODE_CLIENT_VERSION);
++  assert.equal(
++    CLAUDE_CODE_COMPATIBLE_USER_AGENT,
++    'claude-cli/2.1.181 (external, sdk-cli)'
++  );
++  await withEnv({ CLAUDE_CODE_CLIENT_VERSION: undefined }, () => {
++    assert.equal(getClaudeCodeClientVersion(), '2.1.181');
++    assert.equal(getClaudeCodeVersion(), '2.1.181');
++    assert.equal(getDefaultClaudeCodeVersion(), '2.1.181');
++    assert.equal(getClaudeCodeUserAgent('cli'), 'claude-cli/2.1.181 (external, cli)');
++    const suffix = computeDaystampVersionSuffix('2.1.181', billingOptions.now);
++    assert.ok(
++      buildBillingHeaderValue(messages, billingOptions).includes(`2.1.181.${suffix}`)
++    );
++  });
++});
++test('safe overrides are trimmed and read at call time, while pins stay fixed', async () => {
++  for (const version of ['2.1.182', '2.1.183']) {
++    await withEnv({ CLAUDE_CODE_CLIENT_VERSION: ` ${version} ` }, () => {
++      assert.equal(getClaudeCodeClientVersion(), version);
++      assert.equal(getClaudeCodeVersion(), version);
++      assert.equal(getDefaultClaudeCodeVersion(), version);
++      assert.equal(
++        getClaudeCodeUserAgent('cli'),
++        `claude-cli/${version} (external, cli)`
++      );
++      assert.equal(
++        buildClaudeCodeCompatibleHeaders('test-token')['User-Agent'],
++        `claude-cli/${version} (external, sdk-cli)`
++      );
++      const suffix = computeDaystampVersionSuffix(version, billingOptions.now);
++      assert.ok(
++        buildBillingHeaderValue(messages, billingOptions).includes(`${version}.${suffix}`)
++      );
++      assert.equal(CLAUDE_CODE_VERSION, '2.1.181');
++    });
++  }
++});
++test('empty, unsafe and oversized env overrides fall back to the pin', async () => {
++  for (const value of [
++    '',
++    ' ',
++    'bad version',
++    '2.1.182\r\nx-header: bad',
++    'a'.repeat(33),
++  ]) {
++    await withEnv({ CLAUDE_CODE_CLIENT_VERSION: value }, () => {
++      assert.equal(getClaudeCodeClientVersion(), '2.1.181');
++    });
++  }
++});
++test('the old CLAUDE_CODE_VERSION env name is not used', async () => {
++  await withEnv(
++    { CLAUDE_CODE_CLIENT_VERSION: undefined, CLAUDE_CODE_VERSION: '9.9.9' },
++    () => {
++      assert.equal(getClaudeCodeClientVersion(), '2.1.181');
++    }
++  );
++});
++test('explicit transform version takes precedence over the env override', async () => {
++  await withEnv({ CLAUDE_CODE_CLIENT_VERSION: '2.1.182' }, () => {
++    const version = '2.1.180';
++    const suffix = computeDaystampVersionSuffix(version, billingOptions.now);
++    const value = buildBillingHeaderValue(messages, { ...billingOptions, version });
++    assert.ok(value.includes(`${version}.${suffix}`));
++    assert.ok(!value.includes('2.1.182'));
++  });
++});
++test('identity bootstrap advertises the live version', async (t) => {
++  const calls: RequestInit[] = [];
++  t.mock.method(globalThis, 'fetch', async (_url: unknown, init: RequestInit) => {
++    calls.push(init);
++    return Response.json({ oauth_account: { account_uuid: 'account-test' } });
++  });
++  await withEnv({ CLAUDE_CODE_CLIENT_VERSION: '2.1.182' }, async () => {
++    const result = await fetchClaudeBootstrap('test-token');
++    assert.equal(result?.account_uuid, 'account-test');
++    assert.equal(
++      new Headers(calls[0].headers).get('user-agent'),
++      'claude-cli/2.1.182 (external, cli)'
++    );
++  });
++});
++test('OAuth provisioning bootstrap advertises the live version', async (t) => {
++  const { claude } = await import('../../src/lib/oauth/providers/claude.ts');
++  const calls: RequestInit[] = [];
++  t.mock.method(globalThis, 'fetch', async (_url: unknown, init: RequestInit) => {
++    calls.push(init);
++    return Response.json({ oauth_account: { account_uuid: 'account-test' } });
++  });
++  await withEnv({ CLAUDE_CODE_CLIENT_VERSION: '2.1.182' }, async () => {
++    await claude.postExchange({ access_token: 'test-token' });
++    assert.equal(
++      new Headers(calls[0].headers).get('user-agent'),
++      'claude-cli/2.1.182 (external, cli)'
++    );
++  });
++});
++test('quota requests advertise the live version', async (t) => {
++  const { getUsageForProvider } = await import('../../open-sse/services/usage.ts');
++  const calls: RequestInit[] = [];
++  t.mock.method(globalThis, 'fetch', async (_url: unknown, init: RequestInit) => {
++    calls.push(init);
++    return Response.json({ five_hour: { utilization: 10 } });
++  });
++  await withEnv({ CLAUDE_CODE_CLIENT_VERSION: '2.1.182' }, async () => {
++    await getUsageForProvider({ provider: 'claude', accessToken: 'test-token' });
++    assert.equal(calls.length, 2);
++    assert.equal(new Headers(calls[1].headers).get('user-agent'), 'claude-code/2.1.182');
++  });
++});
++test('native OAuth messages use one live version for User-Agent and signed billing', async (t) => {
++  const { BaseExecutor } = await import('../../open-sse/executors/base.ts');
++  const calls: RequestInit[] = [];
++  t.mock.method(globalThis, 'fetch', async (_url: unknown, init: RequestInit) => {
++    calls.push(init);
++    return Response.json({ id: 'message-test' });
++  });
++  await withEnv({ CLAUDE_CODE_CLIENT_VERSION: '2.1.182' }, async () => {
++    const executor = new BaseExecutor('claude', {
++      baseUrl: 'https://example.com/messages',
++    });
++    const result = await executor.execute({
++      model: 'claude-sonnet-4-6',
++      body: { model: 'claude-sonnet-4-6', messages, max_tokens: 16 },
++      stream: false,
++      credentials: {
++        accessToken: 'sk-ant-oat-test',
++        providerSpecificData: {
++          cliUserID: 'a'.repeat(64),
++          accountUUID: '00000000-0000-4000-8000-000000000001',
++        },
++      },
++    });
++    assert.ok(result.response.ok);
++    assert.equal(calls.length, 1);
++    assert.equal(
++      new Headers(calls[0].headers).get('user-agent'),
++      'claude-cli/2.1.182 (external, cli)'
++    );
++    const body = JSON.parse(String(calls[0].body));
++    const suffix = buildHashFor('2.1.182', new Date().toISOString().slice(0, 10));
++    assert.ok(body.system[0].text.includes(`cc_version=2.1.182.${suffix};`));
++    assert.match(body.system[0].text, /cch=[0-9a-f]{5};$/);
++    assert.ok(!body.system[0].text.includes('cch=00000;'));
++  });
++});
++test('live bridge execution rebuilds missing or stale billing before signing', async (t) => {
++  const { DefaultExecutor } = await import('../../open-sse/executors/default.ts');
++  const calls: RequestInit[] = [];
++  t.mock.method(globalThis, 'fetch', async (_url: unknown, init: RequestInit) => {
++    calls.push(init);
++    return Response.json({ id: 'message-test' });
++  });
++  const sourceSystems = [
++    [],
++    [
++      {
++        type: 'text',
++        text: 'x-anthropic-billing-header: cc_version=2.1.137.abc; cch=00000;',
++      },
++    ],
++  ];
++  await withEnv({ CLAUDE_CODE_CLIENT_VERSION: '2.1.182' }, async () => {
++    for (const system of sourceSystems) {
++      const sourceBody = { system, messages, max_tokens: 16 };
++      const body = buildClaudeCodeCompatibleRequest({
++        sourceBody,
++        normalizedBody: sourceBody,
++        claudeBody: sourceBody,
++        model: 'claude-sonnet-4-6',
++      });
++      const executor = new DefaultExecutor('anthropic-compatible-cc-test');
++      await executor.execute({
++        model: 'claude-sonnet-4-6',
++        body,
++        stream: false,
++        credentials: {
++          apiKey: 'test-token',
++          providerSpecificData: { baseUrl: 'https://example.com/v1' },
++        },
++      });
++      const request = calls.at(-1);
++      assert.ok(request);
++      assert.equal(
++        new Headers(request.headers).get('user-agent'),
++        'claude-cli/2.1.182 (external, sdk-cli)'
++      );
++      const payload = JSON.parse(String(request.body));
++      const billing = payload.system.filter((block: { text: string }) =>
++        block.text.startsWith('x-anthropic-billing-header:')
++      );
++      assert.equal(billing.length, 1);
++      assert.match(billing[0].text, /cc_version=2\.1\.182\.[0-9a-f]{3};/);
++      assert.match(billing[0].text, /cch=[0-9a-f]{5};$/);
++      assert.ok(!billing[0].text.includes('cch=00000;'));
++    }
++  });
++});
