@@ -1,7 +1,7 @@
 # Container images collection
 
-[![containers](https://github.com/raven428/container-images/actions/workflows/containers.yaml/badge.svg)](https://github.com/raven428/container-images/actions/workflows/containers.yaml)
-[![AppImages](https://github.com/raven428/container-images/actions/workflows/appimages.yaml/badge.svg)](https://github.com/raven428/container-images/actions/workflows/appimages.yaml)
+[![containers](https://github.com/megalomania428/container-images/actions/workflows/containers.yaml/badge.svg)](https://github.com/megalomania428/container-images/actions/workflows/containers.yaml)
+[![AppImages](https://github.com/megalomania428/container-images/actions/workflows/appimages.yaml/badge.svg)](https://github.com/megalomania428/container-images/actions/workflows/appimages.yaml)
 
 
 ## Before manual `./push.sh`
@@ -15,7 +15,7 @@ podman login --username json_key --password-stdin ghcr.io
 - clone me:
 
   ```bash
-  git clone --recursive git@github.com:raven428/container-images && cd container-images
+  git clone --recursive git@github.com:megalomania428/container-images && cd container-images
   ```
 
 - build some container image(s):

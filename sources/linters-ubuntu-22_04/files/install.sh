@@ -19,7 +19,7 @@ apt-get install -y --no-install-recommends terraform
 gem install mdl
 (
   cd /files
-  curl -sLOm 11 "https://github.com/raven428/container-images/releases/download/\
+  curl -sLOm 11 "https://github.com/megalomania428/container-images/releases/download/\
 000/prettier-2_5_1.tar.xz"
   mkdir -vp /usr/local/node
   cd /usr/local/node

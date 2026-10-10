@@ -16,7 +16,7 @@ if [[ -f "sources/${TAG}/vars.sh" ]]; then
 else
   IMAGE_VER="${IMAGE_VER:-000}"
 fi
-TARGET_REGISTRY="${TARGET_REGISTRY:-ghcr.io/raven428}"
+TARGET_REGISTRY="${TARGET_REGISTRY:-ghcr.io/megalomania428}"
 mkdir -p appimage-output
 # Select build image and inner script based on tag prefix
 case "${TAG}" in

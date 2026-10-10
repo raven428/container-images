@@ -3,7 +3,7 @@
 set -ueo pipefail
 # shellcheck disable=2034
 {
-  NPM_PACKAGE='@raven428/pi-web'
+  NPM_PACKAGE='@megalomania428/pi-web'
   UPSTREAM_URL='https://github.com/jmfederico/pi-web.git'
   UPSTREAM_VER='v1.202609.0'
   PATCHSET='1'

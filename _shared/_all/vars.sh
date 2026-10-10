@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -ueo pipefail
-: "${TARGET_REGISTRY:=ghcr.io/raven428}"
+: "${TARGET_REGISTRY:=ghcr.io/megalomania428}"
 : "${NPM_REGISTRY:=https://npm.pkg.github.com}"
 : "${NPM_IMAGE:=ghcr.io/raven428/node-builder:latest}"
-: "${NPM_REPO_URL:=git+https://github.com/raven428/container-images.git}"
+: "${NPM_REPO_URL:=git+https://github.com/megalomania428/container-images.git}"
 MY_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "${MY_PATH}/lib.sh"

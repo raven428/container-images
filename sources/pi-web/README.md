@@ -1,8 +1,8 @@
-# `@raven428/pi-web`
+# `@megalomania428/pi-web`
 
 <!-- cspell:ignore enum jmfederico patchset subkey subsession toolArgs toolContent -->
 
-Patched build of [pi-web](https://github.com/jmfederico/pi-web), published to GitHub Packages as `@raven428/pi-web`. The upstream tag and patchset number live in `vars.sh`. Release versions use `<upstream>-p<PATCHSET>` and `<upstream>-p<PATCHSET>-<UTC_DATE>-<VERSION_SUFFIX>`; pull requests use `<upstream>-p<PATCHSET>-dev.<VERSION_SUFFIX>`.
+Patched build of [pi-web](https://github.com/jmfederico/pi-web), published to GitHub Packages as `@megalomania428/pi-web`. The upstream tag and patchset number live in `vars.sh`. Release versions use `<upstream>-p<PATCHSET>` and `<upstream>-p<PATCHSET>-<UTC_DATE>-<VERSION_SUFFIX>`; pull requests use `<upstream>-p<PATCHSET>-dev.<VERSION_SUFFIX>`.
 
 ## List of patches
 
